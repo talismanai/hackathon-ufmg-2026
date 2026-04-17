@@ -85,6 +85,7 @@ function readOutcomes(csvPath) {
   return rows.map((row) => ({
     processNumber: row[0],
     uf: row[1],
+    processType: row[2],
     subject: row[2],
     subSubject: row[3],
     resultMacro: row[4],
@@ -165,6 +166,7 @@ function buildCaseFeatures(subsidiesByProcess, outcomesByProcess) {
 
     return {
       processNumber,
+      processType: outcome.processType,
       uf: outcome.uf,
       subject: outcome.subject,
       subSubject: outcome.subSubject,
@@ -190,6 +192,42 @@ function buildCaseFeatures(subsidiesByProcess, outcomesByProcess) {
   });
 }
 
+function buildHistoricalCases(caseFeatures) {
+  return caseFeatures.map((caseFeature) => ({
+    caseNumber: caseFeature.processNumber,
+    processType: caseFeature.processType,
+    uf: caseFeature.uf,
+    causeValueBrl: caseFeature.claimAmountBrl,
+    outcome: caseFeature.resultMacro,
+    condemnationValueBrl: caseFeature.condemnationAmountBrl,
+    featuresJson: JSON.stringify({
+      processNumber: caseFeature.processNumber,
+      processType: caseFeature.processType,
+      uf: caseFeature.uf,
+      subject: caseFeature.subject,
+      subSubject: caseFeature.subSubject,
+      resultMacro: caseFeature.resultMacro,
+      resultMicro: caseFeature.resultMicro,
+      claimAmountCents: caseFeature.claimAmountCents,
+      condemnationAmountCents: caseFeature.condemnationAmountCents,
+      contractProvided: caseFeature.contractProvided,
+      statementProvided: caseFeature.statementProvided,
+      creditProofProvided: caseFeature.creditProofProvided,
+      dossierProvided: caseFeature.dossierProvided,
+      debtEvolutionProvided: caseFeature.debtEvolutionProvided,
+      referencedReportProvided: caseFeature.referencedReportProvided,
+      subsidyCount: caseFeature.subsidyCount,
+      hasFullDocumentation: caseFeature.hasFullDocumentation,
+      condemnationRatio: caseFeature.condemnationRatio
+    }),
+    sourceJson: JSON.stringify({
+      sourceSubsidies: true,
+      sourceOutcomes: true,
+      source: "csv_seed"
+    })
+  }));
+}
+
 async function main() {
   const subsidiesCsv = process.argv[2] ?? defaultSubsidiesCsv;
   const outcomesCsv = process.argv[3] ?? defaultOutcomesCsv;
@@ -210,16 +248,15 @@ async function main() {
 
   const processes = allProcessNumbers.map((processNumber) => ({
     processNumber,
+    processType: outcomesByProcess.get(processNumber)?.processType ?? null,
     sourceSubsidies: subsidiesByProcess.has(processNumber),
     sourceOutcomes: outcomesByProcess.has(processNumber)
   }));
 
   const caseFeatures = buildCaseFeatures(subsidiesByProcess, outcomesByProcess);
+  const historicalCases = buildHistoricalCases(caseFeatures);
 
-  await prisma.feedbackEvent.deleteMany();
-  await prisma.overrideEvent.deleteMany();
-  await prisma.recommendationRun.deleteMany();
-  await prisma.policyVersion.deleteMany();
+  await prisma.historicalCase.deleteMany();
   await prisma.processCaseFeatures.deleteMany();
   await prisma.processOutcome.deleteMany();
   await prisma.processSubsidies.deleteMany();
@@ -229,6 +266,7 @@ async function main() {
   await createManyInChunks(prisma.processSubsidies, subsidies);
   await createManyInChunks(prisma.processOutcome, outcomes);
   await createManyInChunks(prisma.processCaseFeatures, caseFeatures);
+  await createManyInChunks(prisma.historicalCase, historicalCases);
   await createAnalyticalViews();
 
   console.log(`DATABASE_URL=${process.env.DATABASE_URL ?? "not-set"}`);
@@ -236,6 +274,7 @@ async function main() {
   console.log(`Subsidies: ${subsidies.length}`);
   console.log(`Outcomes: ${outcomes.length}`);
   console.log(`Consolidated: ${caseFeatures.length}`);
+  console.log(`Historical cases: ${historicalCases.length}`);
   console.log(
     `Subsidies only: ${[...subsidiesByProcess.keys()].filter((key) => !outcomesByProcess.has(key)).length}`
   );

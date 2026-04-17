@@ -8,15 +8,16 @@ datasource db {
 }
 
 model Process {
-  processNumber       String              @id @map("process_number")
-  sourceSubsidies     Boolean             @default(false) @map("source_subsidies")
-  sourceOutcomes      Boolean             @default(false) @map("source_outcomes")
-  createdAt           DateTime            @default(now()) @map("created_at")
-  subsidies           ProcessSubsidies?
-  outcome             ProcessOutcome?
-  caseFeatures        ProcessCaseFeatures?
-  recommendationRuns  RecommendationRun[]
+  processNumber   String               @id @map("process_number")
+  sourceSubsidies Boolean              @default(false) @map("source_subsidies")
+  sourceOutcomes  Boolean              @default(false) @map("source_outcomes")
+  processType     String?              @map("process_type")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  subsidies       ProcessSubsidies?
+  outcome         ProcessOutcome?
+  caseFeatures    ProcessCaseFeatures?
 
+  @@index([processType])
   @@map("processes")
 }
 
@@ -35,100 +36,263 @@ model ProcessSubsidies {
 }
 
 model ProcessOutcome {
-  processNumber             String   @id @map("process_number")
-  uf                        String
-  subject                   String
-  subSubject                String   @map("sub_subject")
-  resultMacro               String   @map("result_macro")
-  resultMicro               String   @map("result_micro")
-  claimAmountCents          Int      @map("claim_amount_cents")
-  condemnationAmountCents   Int      @map("condemnation_amount_cents")
-  loadedAt                  DateTime @default(now()) @map("loaded_at")
-  process                   Process  @relation(fields: [processNumber], references: [processNumber], onDelete: Cascade)
+  processNumber           String   @id @map("process_number")
+  uf                      String
+  courtDistrict           String?  @map("court_district")
+  processType             String?  @map("process_type")
+  subject                 String
+  subSubject              String   @map("sub_subject")
+  resultMacro             String   @map("result_macro")
+  resultMicro             String   @map("result_micro")
+  claimAmountCents        Int      @map("claim_amount_cents")
+  condemnationAmountCents Int      @map("condemnation_amount_cents")
+  loadedAt                DateTime @default(now()) @map("loaded_at")
+  process                 Process  @relation(fields: [processNumber], references: [processNumber], onDelete: Cascade)
 
   @@index([uf])
+  @@index([courtDistrict])
+  @@index([processType])
   @@index([resultMacro])
   @@index([resultMicro])
   @@map("process_outcomes")
 }
 
 model ProcessCaseFeatures {
-  processNumber             String   @id @map("process_number")
-  uf                        String
-  subject                   String
-  subSubject                String   @map("sub_subject")
-  resultMacro               String   @map("result_macro")
-  resultMicro               String   @map("result_micro")
-  claimAmountCents          Int      @map("claim_amount_cents")
-  condemnationAmountCents   Int      @map("condemnation_amount_cents")
-  contractProvided          Boolean  @map("contract_provided")
-  statementProvided         Boolean  @map("statement_provided")
-  creditProofProvided       Boolean  @map("credit_proof_provided")
-  dossierProvided           Boolean  @map("dossier_provided")
-  debtEvolutionProvided     Boolean  @map("debt_evolution_provided")
-  referencedReportProvided  Boolean  @map("referenced_report_provided")
-  subsidyCount              Int      @map("subsidy_count")
-  hasFullDocumentation      Boolean  @map("has_full_documentation")
-  claimAmountBrl            Float    @map("claim_amount_brl")
-  condemnationAmountBrl     Float    @map("condemnation_amount_brl")
-  condemnationRatio         Float    @map("condemnation_ratio")
-  process                   Process  @relation(fields: [processNumber], references: [processNumber], onDelete: Cascade)
+  processNumber            String   @id @map("process_number")
+  uf                       String
+  courtDistrict            String?  @map("court_district")
+  processType              String?  @map("process_type")
+  subject                  String
+  subSubject               String   @map("sub_subject")
+  resultMacro              String   @map("result_macro")
+  resultMicro              String   @map("result_micro")
+  claimAmountCents         Int      @map("claim_amount_cents")
+  condemnationAmountCents  Int      @map("condemnation_amount_cents")
+  contractProvided         Boolean  @map("contract_provided")
+  statementProvided        Boolean  @map("statement_provided")
+  creditProofProvided      Boolean  @map("credit_proof_provided")
+  dossierProvided          Boolean  @map("dossier_provided")
+  debtEvolutionProvided    Boolean  @map("debt_evolution_provided")
+  referencedReportProvided Boolean  @map("referenced_report_provided")
+  subsidyCount             Int      @map("subsidy_count")
+  hasFullDocumentation     Boolean  @map("has_full_documentation")
+  claimAmountBrl           Float    @map("claim_amount_brl")
+  condemnationAmountBrl    Float    @map("condemnation_amount_brl")
+  condemnationRatio        Float    @map("condemnation_ratio")
+  process                  Process  @relation(fields: [processNumber], references: [processNumber], onDelete: Cascade)
 
   @@index([uf, subSubject, resultMacro])
+  @@index([processType, uf])
+  @@index([courtDistrict])
   @@map("process_case_features")
 }
 
-model PolicyVersion {
-  policyVersion         String              @id @map("policy_version")
-  policyText            String              @map("policy_text")
-  policyType            String              @default("agreement_policy") @map("policy_type")
-  trainSplitRatio       Float               @default(0.7) @map("train_split_ratio")
-  validationSplitRatio  Float               @default(0.3) @map("validation_split_ratio")
-  status                String              @default("draft")
-  createdAt             DateTime            @default(now()) @map("created_at")
-  recommendationRuns    RecommendationRun[]
+model HistoricalCase {
+  id                   String   @id @default(cuid())
+  caseNumber           String?  @map("case_number")
+  processType          String?  @map("process_type")
+  uf                   String?
+  courtDistrict        String?  @map("court_district")
+  causeValueBrl        Float?   @map("cause_value")
+  outcome              String
+  condemnationValueBrl Float?   @map("condemnation_value")
+  featuresJson         String?  @map("features_json")
+  sourceJson           String?  @map("source_json")
+  createdAt            DateTime @default(now()) @map("created_at")
 
-  @@map("policy_versions")
+  @@index([caseNumber])
+  @@index([processType, uf])
+  @@index([courtDistrict])
+  @@map("historical_cases")
 }
 
-model RecommendationRun {
-  runId             String         @id @map("run_id")
-  processNumber     String?        @map("process_number")
-  policyVersion     String?        @map("policy_version")
-  recommendedAction String         @map("recommended_action")
-  confidenceScore   Float?         @map("confidence_score")
-  offerMinCents     Int?           @map("offer_min_cents")
-  offerMaxCents     Int?           @map("offer_max_cents")
-  usedRules         String?        @map("used_rules")
-  explanation       String?
-  createdAt         DateTime       @default(now()) @map("created_at")
-  process           Process?       @relation(fields: [processNumber], references: [processNumber], onDelete: SetNull)
-  policy            PolicyVersion? @relation(fields: [policyVersion], references: [policyVersion], onDelete: SetNull)
-  feedbackEvents    FeedbackEvent[]
-  overrideEvents    OverrideEvent[]
+model Policy {
+  id               String            @id @default(cuid())
+  version          String            @unique
+  name             String
+  processType      String?           @map("process_type")
+  status           String            @default("draft")
+  minOffer         Float             @default(0) @map("min_offer")
+  maxOffer         Float             @default(999999) @map("max_offer")
+  configJson       String            @map("config_json")
+  scorecardJson    String?           @map("scorecard_json")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  publishedAt      DateTime?         @map("published_at")
+  rules            PolicyRule[]
+  caseAnalyses     CaseAnalysis[]
+  metricsSnapshots MetricsSnapshot[]
 
-  @@map("recommendation_runs")
+  @@index([status])
+  @@index([processType, status])
+  @@map("policies")
+}
+
+model PolicyRule {
+  id                String   @id @default(cuid())
+  policyId          String   @map("policy_id")
+  ruleKey           String   @map("rule_key")
+  priority          Int
+  title             String
+  action            String
+  conditionJson     String   @map("condition_json")
+  explanation       String?
+  offerMinFactor    Float?   @map("offer_min_factor")
+  offerTargetFactor Float?   @map("offer_target_factor")
+  offerMaxFactor    Float?   @map("offer_max_factor")
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+  policy            Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, ruleKey])
+  @@index([policyId, priority])
+  @@map("policy_rules")
+}
+
+model Case {
+  id                 String              @id @default(cuid())
+  externalCaseNumber String?             @map("external_case_number")
+  processType        String?             @map("process_type")
+  plaintiffName      String?             @map("plaintiff_name")
+  uf                 String?
+  courtDistrict      String?             @map("court_district")
+  claimAmountCents   Int?                @map("claim_amount_cents")
+  status             String              @default("new")
+  inputJson          String?             @map("input_json")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  documents          CaseDocument[]
+  extractedFactsRuns ExtractedFactsRun[]
+  analyses           CaseAnalysis[]
+  lawyerActions      LawyerAction[]
+  agentRuns          AgentRun[]
+
+  @@index([externalCaseNumber])
+  @@index([status])
+  @@index([processType, uf])
+  @@map("cases")
+}
+
+model CaseDocument {
+  id           String   @id @default(cuid())
+  caseId       String   @map("case_id")
+  docType      String   @map("doc_type")
+  fileName     String   @map("file_name")
+  mimeType     String   @map("mime_type")
+  textContent  String   @map("text_content")
+  metadataJson String?  @map("metadata_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+  case         Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, docType])
+  @@map("case_documents")
+}
+
+model ExtractedFactsRun {
+  id                  String   @id @default(cuid())
+  caseId              String   @map("case_id")
+  factsJson           String   @map("facts_json")
+  critiqueJson        String?  @map("critique_json")
+  normalizedFactsJson String   @map("normalized_facts_json")
+  createdAt           DateTime @default(now()) @map("created_at")
+  case                Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@map("extracted_facts_runs")
+}
+
+model CaseAnalysis {
+  id                  String          @id @default(cuid())
+  caseId              String          @map("case_id")
+  policyVersion       String          @map("policy_version")
+  factsJson           String          @map("facts_json")
+  contradictionsJson  String?         @map("contradictions_json")
+  similarCasesJson    String?         @map("similar_cases_json")
+  riskJson            String          @map("risk_json")
+  decisionDraftJson   String?         @map("decision_draft_json")
+  decisionCritiqueJson String?        @map("decision_critique_json")
+  decisionJson        String          @map("decision_json")
+  usedRulesJson       String?         @map("used_rules_json")
+  evidenceRefsJson    String?         @map("evidence_refs_json")
+  critiqueSummary     String?         @map("critique_summary")
+  recommendedAction   String?         @map("recommended_action")
+  confidenceScore     Float?          @map("confidence_score")
+  offerMinCents       Int?            @map("offer_min_cents")
+  offerTargetCents    Int?            @map("offer_target_cents")
+  offerMaxCents       Int?            @map("offer_max_cents")
+  explanationShort    String?         @map("explanation_short")
+  explanationText     String?         @map("explanation_text")
+  generatedAt         DateTime        @default(now()) @map("generated_at")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  case                Case            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  policy              Policy          @relation(fields: [policyVersion], references: [version], onDelete: Restrict)
+  lawyerActions       LawyerAction[]
+  feedbackEvents      FeedbackEvent[]
+
+  @@index([caseId, createdAt])
+  @@index([policyVersion, recommendedAction])
+  @@map("case_analyses")
+}
+
+model LawyerAction {
+  id                     String       @id @default(cuid())
+  caseId                 String       @map("case_id")
+  analysisId             String       @map("analysis_id")
+  chosenAction           String       @map("chosen_action")
+  followedRecommendation Boolean      @map("followed_recommendation")
+  offeredValueBrl        Float?       @map("offered_value")
+  overrideReason         String?      @map("override_reason")
+  negotiationStatus      String?      @map("negotiation_status")
+  negotiationValueBrl    Float?       @map("negotiation_value")
+  notes                  String?
+  createdAt              DateTime     @default(now()) @map("created_at")
+  case                   Case         @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  analysis               CaseAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@index([analysisId])
+  @@map("lawyer_actions")
 }
 
 model FeedbackEvent {
-  feedbackId    String            @id @map("feedback_id")
-  runId         String            @map("run_id")
-  feedbackType  String            @map("feedback_type")
-  feedbackText  String?           @map("feedback_text")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  run           RecommendationRun @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  id           String       @id @default(cuid())
+  analysisId   String       @map("analysis_id")
+  feedbackType String       @map("feedback_type")
+  feedbackText String?      @map("feedback_text")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  analysis     CaseAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
 
+  @@index([analysisId, createdAt])
   @@map("feedback_events")
 }
 
-model OverrideEvent {
-  overrideId       String            @id @map("override_id")
-  runId            String            @map("run_id")
-  chosenAction     String            @map("chosen_action")
-  chosenOfferCents Int?              @map("chosen_offer_cents")
-  overrideReason   String?           @map("override_reason")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  run              RecommendationRun @relation(fields: [runId], references: [runId], onDelete: Cascade)
+model AgentRun {
+  id           String   @id @default(cuid())
+  workflowType String   @map("workflow_type")
+  caseId       String?  @map("case_id")
+  agentName    String   @map("agent_name")
+  inputJson    String?  @map("input_json")
+  outputJson   String?  @map("output_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+  case         Case?    @relation(fields: [caseId], references: [id], onDelete: SetNull)
 
-  @@map("override_events")
+  @@index([workflowType, createdAt])
+  @@index([caseId, agentName])
+  @@map("agent_runs")
+}
+
+model MetricsSnapshot {
+  id               String    @id @default(cuid())
+  policyVersion    String?   @map("policy_version")
+  periodStart      DateTime  @map("period_start")
+  periodEnd        DateTime  @map("period_end")
+  adherenceRate    Float?    @map("adherence_rate")
+  acceptanceRate   Float?    @map("acceptance_rate")
+  estimatedSavings Float?    @map("estimated_savings")
+  metricsJson      String    @map("metrics_json")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  policy           Policy?   @relation(fields: [policyVersion], references: [version], onDelete: SetNull)
+
+  @@index([policyVersion, periodStart, periodEnd])
+  @@map("metrics_snapshots")
 }
