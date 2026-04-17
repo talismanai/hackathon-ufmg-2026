@@ -16,7 +16,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:unit": "node --import tsx/esm --test apps/api/src/lib/*.test.ts apps/api/src/services/**/*.test.ts apps/api/src/agents/*.test.ts",
     "test:integration": "node --import tsx/esm --test apps/api/src/**/*.integration.test.ts",
-    "validate:workflow1": "npm run typecheck && npm run test:unit && npm run test:integration"
+    "validate:workflow1": "npm run typecheck && npm run test:unit && npm run test:integration",
+    "validate:workflow2": "npm run typecheck && npm run test:unit && npm run test:integration",
+    "validate:all": "npm run typecheck && npm run test:unit && npm run test:integration"
   },
   "dependencies": {
     "@langchain/core": "^0.3.23",

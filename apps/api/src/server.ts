@@ -5,6 +5,8 @@ import Fastify from "fastify";
 
 import { env } from "./config/env.js";
 import { prisma } from "./db/client.js";
+import { registerCaseRoutes } from "./routes/cases.js";
+import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerPolicyRoutes } from "./routes/policies.js";
 
 export function createServer() {
@@ -16,6 +18,8 @@ export function createServer() {
     status: "ok"
   }));
 
+  app.register(registerCaseRoutes);
+  app.register(registerDashboardRoutes);
   app.register(registerPolicyRoutes);
 
   app.addHook("onClose", async () => {

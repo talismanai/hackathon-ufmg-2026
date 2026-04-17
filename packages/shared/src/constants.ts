@@ -1,6 +1,7 @@
 import type { PolicyRuleAction, RiskBand } from "./types.js";
 
 export const POLICY_CALIBRATION_WORKFLOW = "policy_calibration";
+export const CASE_DECISION_WORKFLOW = "case_decision";
 
 export const POLICY_CALIBRATION_NODE_NAMES = [
   "loadHistoricalData",
@@ -9,6 +10,20 @@ export const POLICY_CALIBRATION_NODE_NAMES = [
   "critiquePolicyRules",
   "scorePolicyRules",
   "publishPolicyVersion"
+] as const;
+
+export const CASE_DECISION_NODE_NAMES = [
+  "ingestCase",
+  "extractFactsAction",
+  "extractFactsCritique",
+  "finalizeFacts",
+  "retrieveSimilarCases",
+  "scoreRisk",
+  "proposeDecisionAction",
+  "critiqueDecision",
+  "finalizeDecision",
+  "explainForLawyer",
+  "persistDecision"
 ] as const;
 
 export const FAVORABLE_OUTCOME_LABELS = ["Êxito", "Exito"] as const;
@@ -63,3 +78,9 @@ export const ONLINE_COMPATIBLE_POLICY_FIELDS = new Set([
   "claimAmountBand",
   "hasFullDocumentation"
 ]);
+
+export const CRITICAL_DOC_TYPES = [
+  "contrato",
+  "extrato",
+  "comprovante_credito"
+] as const;

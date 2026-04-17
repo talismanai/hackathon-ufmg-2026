@@ -4,6 +4,15 @@ export type ClaimAmountBand = "low" | "medium" | "high";
 
 export type RiskBand = "low" | "medium" | "high";
 
+export type DocType =
+  | "autos"
+  | "contrato"
+  | "extrato"
+  | "comprovante_credito"
+  | "dossie"
+  | "demonstrativo_divida"
+  | "laudo_referenciado";
+
 export type ConditionOperator = "eq" | "neq" | "gte" | "lte" | "in";
 
 export type FeatureCondition = {
@@ -103,6 +112,166 @@ export type DatasetSplitSummary = {
   testRows: number;
   trainRatio: number;
   testRatio: number;
+};
+
+export type EvidenceRef = {
+  docType: DocType;
+  quote?: string;
+  page?: number;
+  field?: string;
+};
+
+export type CaseDocument = {
+  id: string;
+  caseId: string;
+  docType: DocType;
+  fileName: string;
+  mimeType: string;
+  textContent: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ExtractedFacts = {
+  contractPresent: boolean;
+  contractDate?: string;
+  contractAmount?: number;
+  creditProofPresent: boolean;
+  creditProofValid: boolean;
+  matchingDepositFound: boolean;
+  depositAmount?: number;
+  dossierStatus: "favorable" | "inconclusive" | "unfavorable" | "missing";
+  debtEvolutionPresent: boolean;
+  referenceReportPresent: boolean;
+  materialContradictions: number;
+  missingCriticalDocuments: number;
+  plaintiffClaimsNonRecognition: boolean;
+  notes?: string[];
+  evidenceRefs: EvidenceRef[];
+};
+
+export type CritiqueResult = {
+  passed: boolean;
+  severity: "low" | "medium" | "high";
+  issues: string[];
+  suggestedFixes?: string[];
+};
+
+export type SimilarCasesSummary = {
+  sampleSize: number;
+  lossRate: number;
+  medianCondemnation: number;
+  avgCondemnation: number;
+  topPatterns: string[];
+};
+
+export type RiskScore = {
+  lossProbability: number;
+  expectedCondemnation: number;
+  expectedJudicialCost: number;
+  riskBand: RiskBand;
+};
+
+export type DecisionDraft = {
+  action: "agreement" | "defense" | "review";
+  usedRules: string[];
+  reasoning: string;
+};
+
+export type CaseDecision = {
+  action: "agreement" | "defense" | "review";
+  confidence: number;
+  usedRules: string[];
+  offerMin?: number;
+  offerTarget?: number;
+  offerMax?: number;
+  expectedJudicialCost: number;
+  expectedCondemnation: number;
+  lossProbability: number;
+  explanationShort: string;
+  evidenceRefs: EvidenceRef[];
+};
+
+export type CaseDecisionState = {
+  caseId: string;
+  policyVersion: string;
+  activePolicy?: StoredPolicy;
+  caseRecord?: CaseRecord;
+  documents: CaseDocument[];
+  rawTextByDocType: Record<string, string>;
+  extractedFactsDraft?: ExtractedFacts;
+  extractedFactsCritique?: CritiqueResult;
+  normalizedFacts?: ExtractedFacts;
+  similarCases?: SimilarCasesSummary;
+  riskScore?: RiskScore;
+  decisionDraft?: DecisionDraft;
+  decisionCritique?: CritiqueResult;
+  finalDecision?: CaseDecision;
+  lawyerExplanation?: string;
+  analysisId?: string;
+  errors: string[];
+};
+
+export type CaseRecord = {
+  id: string;
+  externalCaseNumber?: string | null;
+  processType?: string | null;
+  plaintiffName?: string | null;
+  uf?: string | null;
+  courtDistrict?: string | null;
+  claimAmountCents?: number | null;
+  status: string;
+  input?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  documents: CaseDocument[];
+  latestAnalysis?: StoredCaseAnalysis;
+};
+
+export type StoredCaseAnalysis = {
+  id: string;
+  caseId: string;
+  policyVersion: string;
+  facts: ExtractedFacts;
+  contradictions?: Record<string, unknown> | null;
+  similarCases?: SimilarCasesSummary | null;
+  risk: RiskScore;
+  decisionDraft?: DecisionDraft | null;
+  decisionCritique?: CritiqueResult | null;
+  decision: CaseDecision;
+  usedRules: string[];
+  evidenceRefs: EvidenceRef[];
+  critiqueSummary?: string | null;
+  recommendedAction?: string | null;
+  confidenceScore?: number | null;
+  offerMinCents?: number | null;
+  offerTargetCents?: number | null;
+  offerMaxCents?: number | null;
+  explanationShort?: string | null;
+  explanationText?: string | null;
+  generatedAt: string;
+  createdAt: string;
+};
+
+export type LawyerActionInput = {
+  analysisId: string;
+  chosenAction: "agreement" | "defense" | "review";
+  followedRecommendation: boolean;
+  offeredValue?: number;
+  overrideReason?: string;
+  negotiationStatus?: string;
+  negotiationValue?: number;
+  notes?: string;
+};
+
+export type DashboardSummary = {
+  totalCases: number;
+  analyzedCases: number;
+  adherenceRate: number;
+  acceptanceRate: number;
+  estimatedSavings: number;
+  overrides: number;
+  agreementsRecommended: number;
+  defensesRecommended: number;
 };
 
 export type PublishedPolicy = {

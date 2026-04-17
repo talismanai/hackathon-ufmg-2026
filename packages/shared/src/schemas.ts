@@ -104,6 +104,91 @@ export const datasetSplitSummarySchema = z.object({
   testRatio: z.number().min(0).max(1)
 });
 
+export const evidenceRefSchema = z.object({
+  docType: z.enum([
+    "autos",
+    "contrato",
+    "extrato",
+    "comprovante_credito",
+    "dossie",
+    "demonstrativo_divida",
+    "laudo_referenciado"
+  ]),
+  quote: z.string().optional(),
+  page: z.number().int().positive().optional(),
+  field: z.string().optional()
+});
+
+export const caseDocumentSchema = z.object({
+  id: z.string().min(1),
+  caseId: z.string().min(1),
+  docType: evidenceRefSchema.shape.docType,
+  fileName: z.string().min(1),
+  mimeType: z.string().min(1),
+  textContent: z.string(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+export const extractedFactsSchema = z.object({
+  contractPresent: z.boolean(),
+  contractDate: z.string().optional(),
+  contractAmount: z.number().positive().optional(),
+  creditProofPresent: z.boolean(),
+  creditProofValid: z.boolean(),
+  matchingDepositFound: z.boolean(),
+  depositAmount: z.number().positive().optional(),
+  dossierStatus: z.enum(["favorable", "inconclusive", "unfavorable", "missing"]),
+  debtEvolutionPresent: z.boolean(),
+  referenceReportPresent: z.boolean(),
+  materialContradictions: z.number().int().nonnegative(),
+  missingCriticalDocuments: z.number().int().nonnegative(),
+  plaintiffClaimsNonRecognition: z.boolean(),
+  notes: z.array(z.string()).optional(),
+  evidenceRefs: z.array(evidenceRefSchema)
+});
+
+export const critiqueResultSchema = z.object({
+  passed: z.boolean(),
+  severity: z.enum(["low", "medium", "high"]),
+  issues: z.array(z.string()),
+  suggestedFixes: z.array(z.string()).optional()
+});
+
+export const similarCasesSummarySchema = z.object({
+  sampleSize: z.number().int().nonnegative(),
+  lossRate: z.number().min(0).max(1),
+  medianCondemnation: z.number().nonnegative(),
+  avgCondemnation: z.number().nonnegative(),
+  topPatterns: z.array(z.string())
+});
+
+export const riskScoreSchema = z.object({
+  lossProbability: z.number().min(0).max(1),
+  expectedCondemnation: z.number().nonnegative(),
+  expectedJudicialCost: z.number().nonnegative(),
+  riskBand: z.enum(["low", "medium", "high"])
+});
+
+export const decisionDraftSchema = z.object({
+  action: z.enum(["agreement", "defense", "review"]),
+  usedRules: z.array(z.string()),
+  reasoning: z.string().min(1)
+});
+
+export const caseDecisionSchema = z.object({
+  action: z.enum(["agreement", "defense", "review"]),
+  confidence: z.number().min(0).max(1),
+  usedRules: z.array(z.string()),
+  offerMin: z.number().nonnegative().optional(),
+  offerTarget: z.number().nonnegative().optional(),
+  offerMax: z.number().nonnegative().optional(),
+  expectedJudicialCost: z.number().nonnegative(),
+  expectedCondemnation: z.number().nonnegative(),
+  lossProbability: z.number().min(0).max(1),
+  explanationShort: z.string().min(1),
+  evidenceRefs: z.array(evidenceRefSchema)
+});
+
 export const publishedPolicySchema = z.object({
   policyId: z.string().min(1),
   version: z.string().min(1),
@@ -152,4 +237,87 @@ export const policyCalibrationStateSchema = z.object({
   policyLawyerSummary: z.string().optional(),
   publishedPolicy: publishedPolicySchema.optional(),
   errors: z.array(z.string())
+});
+
+export const caseDecisionStateSchema = z.object({
+  caseId: z.string().min(1),
+  policyVersion: z.string().min(1),
+  activePolicy: storedPolicySchema.optional(),
+  caseRecord: z.lazy(() => caseRecordSchema).optional(),
+  documents: z.array(caseDocumentSchema),
+  rawTextByDocType: z.record(z.string(), z.string()),
+  extractedFactsDraft: extractedFactsSchema.optional(),
+  extractedFactsCritique: critiqueResultSchema.optional(),
+  normalizedFacts: extractedFactsSchema.optional(),
+  similarCases: similarCasesSummarySchema.optional(),
+  riskScore: riskScoreSchema.optional(),
+  decisionDraft: decisionDraftSchema.optional(),
+  decisionCritique: critiqueResultSchema.optional(),
+  finalDecision: caseDecisionSchema.optional(),
+  lawyerExplanation: z.string().optional(),
+  analysisId: z.string().optional(),
+  errors: z.array(z.string())
+});
+
+export const storedCaseAnalysisSchema = z.object({
+  id: z.string().min(1),
+  caseId: z.string().min(1),
+  policyVersion: z.string().min(1),
+  facts: extractedFactsSchema,
+  contradictions: z.record(z.string(), z.unknown()).nullable().optional(),
+  similarCases: similarCasesSummarySchema.nullable().optional(),
+  risk: riskScoreSchema,
+  decisionDraft: decisionDraftSchema.nullable().optional(),
+  decisionCritique: critiqueResultSchema.nullable().optional(),
+  decision: caseDecisionSchema,
+  usedRules: z.array(z.string()),
+  evidenceRefs: z.array(evidenceRefSchema),
+  critiqueSummary: z.string().nullable().optional(),
+  recommendedAction: z.string().nullable().optional(),
+  confidenceScore: z.number().nullable().optional(),
+  offerMinCents: z.number().int().nullable().optional(),
+  offerTargetCents: z.number().int().nullable().optional(),
+  offerMaxCents: z.number().int().nullable().optional(),
+  explanationShort: z.string().nullable().optional(),
+  explanationText: z.string().nullable().optional(),
+  generatedAt: z.string().min(1),
+  createdAt: z.string().min(1)
+});
+
+export const caseRecordSchema = z.object({
+  id: z.string().min(1),
+  externalCaseNumber: z.string().nullable().optional(),
+  processType: z.string().nullable().optional(),
+  plaintiffName: z.string().nullable().optional(),
+  uf: z.string().nullable().optional(),
+  courtDistrict: z.string().nullable().optional(),
+  claimAmountCents: z.number().int().nullable().optional(),
+  status: z.string().min(1),
+  input: z.record(z.string(), z.unknown()).optional(),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  documents: z.array(caseDocumentSchema),
+  latestAnalysis: storedCaseAnalysisSchema.optional()
+});
+
+export const lawyerActionInputSchema = z.object({
+  analysisId: z.string().min(1),
+  chosenAction: z.enum(["agreement", "defense", "review"]),
+  followedRecommendation: z.boolean(),
+  offeredValue: z.number().nonnegative().optional(),
+  overrideReason: z.string().optional(),
+  negotiationStatus: z.string().optional(),
+  negotiationValue: z.number().nonnegative().optional(),
+  notes: z.string().optional()
+});
+
+export const dashboardSummarySchema = z.object({
+  totalCases: z.number().int().nonnegative(),
+  analyzedCases: z.number().int().nonnegative(),
+  adherenceRate: z.number().min(0).max(1),
+  acceptanceRate: z.number().min(0).max(1),
+  estimatedSavings: z.number(),
+  overrides: z.number().int().nonnegative(),
+  agreementsRecommended: z.number().int().nonnegative(),
+  defensesRecommended: z.number().int().nonnegative()
 });

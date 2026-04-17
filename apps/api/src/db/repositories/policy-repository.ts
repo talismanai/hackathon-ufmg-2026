@@ -221,3 +221,22 @@ export async function getActivePolicy(): Promise<StoredPolicy | null> {
 
   return policy ? toStoredPolicy(policy) : null;
 }
+
+export async function getPolicyByVersion(
+  version: string
+): Promise<StoredPolicy | null> {
+  const policy = await prisma.policy.findUnique({
+    where: {
+      version
+    },
+    include: {
+      rules: {
+        orderBy: {
+          priority: "asc"
+        }
+      }
+    }
+  });
+
+  return policy ? toStoredPolicy(policy) : null;
+}
