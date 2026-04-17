@@ -1,6 +1,8 @@
 import {
   FAVORABLE_OUTCOME_LABELS,
   OFFER_FACTORS_BY_RISK_BAND,
+  TRAIN_SPLIT_RATIO,
+  type DatasetSplitSummary,
   type ClaimAmountBand,
   type FeatureBucket,
   type HistoricalCaseFeatures,
@@ -47,6 +49,16 @@ export function average(values: number[]): number {
   }
 
   return values.reduce((sum, current) => sum + current, 0) / values.length;
+}
+
+function deterministicHash(value: string): number {
+  let hash = 5381;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+
+  return hash >>> 0;
 }
 
 export function median(values: number[]): number {
@@ -210,4 +222,56 @@ export function fallbackAction(
   }
 
   return "defense";
+}
+
+export function splitHistoricalRows(
+  historicalRows: HistoricalCaseRow[],
+  trainRatio = TRAIN_SPLIT_RATIO
+): {
+  trainingRows: HistoricalCaseRow[];
+  evaluationRows: HistoricalCaseRow[];
+  datasetSplit: DatasetSplitSummary;
+} {
+  const orderedRows = [...historicalRows].sort((left, right) => {
+    const leftHash = deterministicHash(left.caseNumber);
+    const rightHash = deterministicHash(right.caseNumber);
+
+    return leftHash - rightHash || left.caseNumber.localeCompare(right.caseNumber);
+  });
+
+  if (orderedRows.length <= 1) {
+    return {
+      trainingRows: orderedRows,
+      evaluationRows: orderedRows,
+      datasetSplit: {
+        method: "deterministic_case_hash",
+        totalRows: orderedRows.length,
+        trainRows: orderedRows.length,
+        testRows: orderedRows.length,
+        trainRatio: orderedRows.length === 0 ? 0 : 1,
+        testRatio: orderedRows.length === 0 ? 0 : 1
+      }
+    };
+  }
+
+  const proposedTrainSize = Math.floor(orderedRows.length * trainRatio);
+  const trainSize = Math.min(
+    orderedRows.length - 1,
+    Math.max(1, proposedTrainSize)
+  );
+  const trainingRows = orderedRows.slice(0, trainSize);
+  const evaluationRows = orderedRows.slice(trainSize);
+
+  return {
+    trainingRows,
+    evaluationRows,
+    datasetSplit: {
+      method: "deterministic_case_hash",
+      totalRows: orderedRows.length,
+      trainRows: trainingRows.length,
+      testRows: evaluationRows.length,
+      trainRatio: trainingRows.length / orderedRows.length,
+      testRatio: evaluationRows.length / orderedRows.length
+    }
+  };
 }

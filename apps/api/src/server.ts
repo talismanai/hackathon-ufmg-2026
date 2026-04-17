@@ -33,8 +33,9 @@ async function start(): Promise<void> {
       host: env.host,
       port: env.port
     });
+    console.log(`API listening on http://${env.host}:${env.port}`);
   } catch (error) {
-    app.log.error(error);
+    console.error("Failed to start API server:", error);
     process.exitCode = 1;
     await app.close();
   }

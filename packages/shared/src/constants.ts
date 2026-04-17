@@ -21,6 +21,12 @@ export const DEFAULT_POLICY_MAX_OFFER = 999999;
 
 export const MIN_BUCKET_SAMPLE_SIZE = 25;
 
+export const TRAIN_SPLIT_RATIO = 0.7;
+
+export const TARGET_POLICY_SCORE = 0.8;
+
+export const MAX_POLICY_RETRIES = 3;
+
 export const OFFER_FACTORS_BY_RISK_BAND: Record<
   RiskBand,
   { min: number; target: number; max: number }

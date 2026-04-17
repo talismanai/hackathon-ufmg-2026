@@ -103,8 +103,15 @@ test("workflow1 via API calibra policy, persiste e expõe policy ativa", async (
   const calibrateBody = calibrateResponse.json();
   assert.equal(calibrateBody.runId, "integration-run-001");
   assert.equal(calibrateBody.errors.length, 0);
-  assert.ok(calibrateBody.candidateRules >= 2);
+  assert.ok(calibrateBody.candidateRules >= 1);
   assert.equal(calibrateBody.publishedPolicy.status, "published");
+  assert.equal(calibrateBody.publishedPolicy.datasetSplit.trainRows, 40);
+  assert.equal(calibrateBody.publishedPolicy.datasetSplit.testRows, 18);
+  assert.ok(calibrateBody.publishedPolicy.scorecard.policyScore >= 0.8);
+  assert.match(
+    calibrateBody.publishedPolicy.lawyerSummary,
+    /Resumo da politica de acordos/
+  );
 
   const activeResponse = await app.inject({
     method: "GET",
@@ -116,7 +123,10 @@ test("workflow1 via API calibra policy, persiste e expõe policy ativa", async (
   const activeBody = activeResponse.json();
   assert.equal(activeBody.item.status, "published");
   assert.ok(Array.isArray(activeBody.item.rules));
-  assert.ok(activeBody.item.rules.length >= 2);
+  assert.ok(activeBody.item.rules.length >= 1);
+  assert.equal(activeBody.item.datasetSplit.trainRows, 40);
+  assert.equal(activeBody.item.datasetSplit.testRows, 18);
+  assert.match(activeBody.item.lawyerSummary, /advogado/i);
 
   const listResponse = await app.inject({
     method: "GET",
@@ -134,5 +144,5 @@ test("workflow1 via API calibra policy, persiste e expõe policy ativa", async (
     }
   });
 
-  assert.equal(agentRunCount, 6);
+  assert.ok(agentRunCount >= 9);
 });

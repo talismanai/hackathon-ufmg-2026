@@ -56,8 +56,11 @@ export async function publishPolicyVersion(
       generatedAt: new Date().toISOString(),
       inputCsvPath: state.inputCsvPath ?? null,
       logsPath: state.logsPath ?? null,
+      calibrationAttempt: state.calibrationAttempt,
       critiqueReport: state.critiqueReport ?? null,
       bucketCount: state.featureBuckets.length,
+      datasetSplit: state.datasetSplit ?? null,
+      lawyerSummary: state.policyLawyerSummary ?? null,
       offerFactorsByRiskBand: OFFER_FACTORS_BY_RISK_BAND,
       limitations: [
         "A calibracao offline usa presenca de subsidios como proxy e ainda nao enxerga matchingDepositFound nem creditProofValid.",
@@ -74,6 +77,8 @@ export async function publishPolicyVersion(
     status: "published",
     rules: state.candidateRules,
     scorecard: state.scorecard,
+    lawyerSummary: state.policyLawyerSummary,
+    datasetSplit: state.datasetSplit,
     createdAt: createdAt.toISOString()
   });
 }

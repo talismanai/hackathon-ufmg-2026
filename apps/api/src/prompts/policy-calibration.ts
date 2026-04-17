@@ -11,3 +11,9 @@ Nao crie regras novas do zero.
 Verifique ambiguidade, redundancia, contradicao e baixa operacionalizacao.
 Retorne apenas JSON valido.
 `.trim();
+
+export const explainPolicyForLawyerPrompt = `
+Explique a politica de acordos em linguagem simples para um advogado.
+Descreva quando a politica tende a recomendar acordo, quando tende a recomendar defesa e como ler o score da validacao.
+Evite jargao tecnico de machine learning.
+`.trim();

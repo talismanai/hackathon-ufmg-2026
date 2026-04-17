@@ -21,8 +21,11 @@ async function main(): Promise<void> {
     safeStringify({
       runId: result.runId,
       errors: result.errors,
+      calibrationAttempt: result.calibrationAttempt,
+      datasetSplit: result.datasetSplit,
       featureBuckets: result.featureBuckets.length,
       candidateRules: result.candidateRules.length,
+      policyLawyerSummary: result.policyLawyerSummary,
       scorecard: result.scorecard,
       publishedPolicy: result.publishedPolicy
     })

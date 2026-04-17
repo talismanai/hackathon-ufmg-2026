@@ -81,15 +81,27 @@ export const policyCritiqueReportSchema = z.object({
 
 export const policyScorecardSchema = z.object({
   totalCases: z.number().int().nonnegative(),
+  trainSampleSize: z.number().int().nonnegative(),
+  testSampleSize: z.number().int().nonnegative(),
   matchedCases: z.number().int().nonnegative(),
   coverageRate: z.number().min(0).max(1),
   estimatedPolicyCost: z.number().nonnegative(),
   baselineExpectedCost: z.number().nonnegative(),
   estimatedSavings: z.number(),
+  policyScore: z.number().min(0).max(1),
   agreementRate: z.number().min(0).max(1),
   defenseRate: z.number().min(0).max(1),
   reviewRate: z.number().min(0).max(1),
   hardRuleHitRate: z.number().min(0).max(1)
+});
+
+export const datasetSplitSummarySchema = z.object({
+  method: z.literal("deterministic_case_hash"),
+  totalRows: z.number().int().nonnegative(),
+  trainRows: z.number().int().nonnegative(),
+  testRows: z.number().int().nonnegative(),
+  trainRatio: z.number().min(0).max(1),
+  testRatio: z.number().min(0).max(1)
 });
 
 export const publishedPolicySchema = z.object({
@@ -98,6 +110,8 @@ export const publishedPolicySchema = z.object({
   status: z.literal("published"),
   rules: z.array(policyRuleDraftSchema),
   scorecard: policyScorecardSchema,
+  lawyerSummary: z.string().optional(),
+  datasetSplit: datasetSplitSummarySchema.optional(),
   createdAt: z.string().min(1)
 });
 
@@ -112,6 +126,8 @@ export const storedPolicySchema = z.object({
   config: z.record(z.string(), z.unknown()),
   rules: z.array(policyRuleDraftSchema),
   scorecard: policyScorecardSchema.optional(),
+  lawyerSummary: z.string().optional(),
+  datasetSplit: datasetSplitSummarySchema.optional(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   publishedAt: z.string().nullable().optional()
@@ -121,11 +137,19 @@ export const policyCalibrationStateSchema = z.object({
   runId: z.string().min(1),
   inputCsvPath: z.string().optional(),
   logsPath: z.string().optional(),
+  calibrationAttempt: z.number().int().positive(),
   historicalRows: z.array(historicalCaseRowSchema),
+  trainingRows: z.array(historicalCaseRowSchema),
+  evaluationRows: z.array(historicalCaseRowSchema),
+  datasetSplit: datasetSplitSummarySchema.optional(),
   featureBuckets: z.array(featureBucketSchema),
   candidateRules: z.array(policyRuleDraftSchema),
   critiqueReport: policyCritiqueReportSchema.optional(),
   scorecard: policyScorecardSchema.optional(),
+  bestCandidateRules: z.array(policyRuleDraftSchema).optional(),
+  bestCritiqueReport: policyCritiqueReportSchema.optional(),
+  bestScorecard: policyScorecardSchema.optional(),
+  policyLawyerSummary: z.string().optional(),
   publishedPolicy: publishedPolicySchema.optional(),
   errors: z.array(z.string())
 });

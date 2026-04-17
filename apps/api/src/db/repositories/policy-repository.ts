@@ -129,6 +129,8 @@ export async function publishPolicy({
 }
 
 function toStoredPolicy(policy: PolicyWithRules): StoredPolicy {
+  const config = parseJson<Record<string, unknown>>(policy.configJson, {});
+
   return storedPolicySchema.parse({
     policyId: policy.id,
     version: policy.version,
@@ -137,7 +139,7 @@ function toStoredPolicy(policy: PolicyWithRules): StoredPolicy {
     status: policy.status,
     minOffer: policy.minOffer,
     maxOffer: policy.maxOffer,
-    config: parseJson<Record<string, unknown>>(policy.configJson, {}),
+    config,
     rules: policy.rules.map((rule) => ({
       ruleKey: rule.ruleKey,
       priority: rule.priority,
@@ -155,6 +157,28 @@ function toStoredPolicy(policy: PolicyWithRules): StoredPolicy {
     scorecard: policy.scorecardJson
       ? parseJson<PolicyScorecard | undefined>(policy.scorecardJson, undefined)
       : undefined,
+    lawyerSummary:
+      config.lawyerSummary && typeof config.lawyerSummary === "string"
+        ? config.lawyerSummary
+        : undefined,
+    datasetSplit: (() => {
+      const datasetSplit = config.datasetSplit;
+
+      if (
+        datasetSplit &&
+        typeof datasetSplit === "object" &&
+        "method" in datasetSplit &&
+        "totalRows" in datasetSplit &&
+        "trainRows" in datasetSplit &&
+        "testRows" in datasetSplit &&
+        "trainRatio" in datasetSplit &&
+        "testRatio" in datasetSplit
+      ) {
+        return datasetSplit as StoredPolicy["datasetSplit"];
+      }
+
+      return undefined;
+    })(),
     createdAt: policy.createdAt.toISOString(),
     updatedAt: policy.updatedAt.toISOString(),
     publishedAt: policy.publishedAt?.toISOString() ?? null

@@ -50,37 +50,56 @@ function buildRule(
 }
 
 export async function proposePolicyRules(
-  featureBuckets: FeatureBucket[]
+  featureBuckets: FeatureBucket[],
+  options?: {
+    calibrationAttempt?: number;
+  }
 ): Promise<PolicyRuleDraft[]> {
+  const calibrationAttempt = options?.calibrationAttempt ?? 1;
+  const minimumBucketSampleSize =
+    calibrationAttempt === 1 ? MIN_BUCKET_SAMPLE_SIZE : calibrationAttempt === 2 ? 18 : 12;
+  const agreementLossThreshold =
+    calibrationAttempt === 1 ? 0.58 : calibrationAttempt === 2 ? 0.5 : 0.45;
+  const defenseLossThreshold =
+    calibrationAttempt === 1 ? 0.25 : calibrationAttempt === 2 ? 0.3 : 0.35;
+  const maxAgreementRules = calibrationAttempt === 1 ? 4 : calibrationAttempt === 2 ? 5 : 6;
+  const maxDefenseRules = calibrationAttempt === 1 ? 3 : calibrationAttempt === 2 ? 4 : 5;
+  const maxReviewRules = calibrationAttempt === 1 ? 1 : 2;
   const eligibleBuckets = featureBuckets.filter(
-    (bucket) => bucket.sampleSize >= MIN_BUCKET_SAMPLE_SIZE
+    (bucket) => bucket.sampleSize >= minimumBucketSampleSize
   );
 
   const agreementRules = eligibleBuckets
-    .filter((bucket) => bucket.lossRate >= 0.58)
+    .filter((bucket) => bucket.lossRate >= agreementLossThreshold)
     .sort(
       (left, right) =>
-        right.lossRate - left.lossRate || right.sampleSize - left.sampleSize
+        right.expectedJudicialCost - left.expectedJudicialCost ||
+        right.lossRate - left.lossRate ||
+        right.sampleSize - left.sampleSize
     )
-    .slice(0, 4);
+    .slice(0, maxAgreementRules);
 
   const defenseRules = eligibleBuckets
     .filter(
       (bucket) =>
-        bucket.lossRate <= 0.25 && bucket.featureSnapshot.hasFullDocumentation
+        bucket.lossRate <= defenseLossThreshold &&
+        bucket.featureSnapshot.hasFullDocumentation
     )
     .sort(
       (left, right) =>
         left.lossRate - right.lossRate || right.sampleSize - left.sampleSize
     )
-    .slice(0, 3);
+    .slice(0, maxDefenseRules);
 
   const reviewRules = eligibleBuckets
     .filter(
-      (bucket) => bucket.lossRate > 0.4 && bucket.lossRate < 0.58 && bucket.sampleSize < 40
+      (bucket) =>
+        bucket.lossRate > defenseLossThreshold &&
+        bucket.lossRate < agreementLossThreshold &&
+        bucket.sampleSize < 60
     )
     .sort((left, right) => right.sampleSize - left.sampleSize)
-    .slice(0, 1);
+    .slice(0, maxReviewRules);
 
   const rules: PolicyRuleDraft[] = [];
   let priority = 10;

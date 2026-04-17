@@ -6,7 +6,8 @@ import {
   fallbackAction,
   isFavorableOutcome,
   matchesRule,
-  riskBandFromLossProbability
+  riskBandFromLossProbability,
+  splitHistoricalRows
 } from "./policy-calibration.js";
 import { makeBucket, makeHistoricalRow } from "../test-helpers/policy-fixtures.js";
 
@@ -75,4 +76,28 @@ test("matchesRule valida igualdade nas features estruturadas", () => {
   };
 
   assert.equal(matchesRule(row, rule), true);
+});
+
+test("splitHistoricalRows aplica separacao deterministica 70/30", () => {
+  const rows = Array.from({ length: 10 }, (_, index) =>
+    makeHistoricalRow({
+      caseNumber: `CASE-${index}`
+    })
+  );
+
+  const firstSplit = splitHistoricalRows(rows);
+  const secondSplit = splitHistoricalRows(rows);
+
+  assert.equal(firstSplit.trainingRows.length, 7);
+  assert.equal(firstSplit.evaluationRows.length, 3);
+  assert.deepEqual(
+    firstSplit.trainingRows.map((row) => row.caseNumber),
+    secondSplit.trainingRows.map((row) => row.caseNumber)
+  );
+  assert.deepEqual(
+    firstSplit.evaluationRows.map((row) => row.caseNumber),
+    secondSplit.evaluationRows.map((row) => row.caseNumber)
+  );
+  assert.equal(firstSplit.datasetSplit.trainRows, 7);
+  assert.equal(firstSplit.datasetSplit.testRows, 3);
 });

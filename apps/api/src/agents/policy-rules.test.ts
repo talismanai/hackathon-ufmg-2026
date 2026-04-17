@@ -166,8 +166,11 @@ test("scorePolicyRules calcula cobertura e economia com base na regra aplicada",
   );
 
   assert.equal(scorecard.totalCases, 2);
+  assert.equal(scorecard.trainSampleSize, 120);
+  assert.equal(scorecard.testSampleSize, 2);
   assert.equal(scorecard.matchedCases, 1);
   assert.equal(scorecard.coverageRate, 0.5);
+  assert.equal(scorecard.policyScore, 1);
   assert.equal(scorecard.agreementRate, 0.5);
   assert.equal(scorecard.defenseRate, 0.5);
   assert.equal(scorecard.reviewRate, 0);

@@ -1,6 +1,8 @@
 import { Annotation, START, END, StateGraph } from "@langchain/langgraph";
 import {
+  MAX_POLICY_RETRIES,
   POLICY_CALIBRATION_WORKFLOW,
+  TARGET_POLICY_SCORE,
   policyCritiqueReportSchema,
   policyRuleDraftSchema,
   policyScorecardSchema,
@@ -8,12 +10,14 @@ import {
 } from "@grupo4/shared";
 
 import { critiquePolicyRules } from "../agents/critique-policy-rules.js";
+import { explainPolicyForLawyer } from "../agents/explain-policy-for-lawyer.js";
 import { proposePolicyRules } from "../agents/propose-policy-rules.js";
 import { createAgentRun } from "../db/repositories/agent-run-repository.js";
 import { buildFeatureBuckets } from "../services/policy-calibration/build-feature-buckets.js";
 import { loadHistoricalData } from "../services/policy-calibration/load-historical-data.js";
 import { publishPolicyVersion } from "../services/policy-calibration/publish-policy-version.js";
 import { scorePolicyRules } from "../services/policy-calibration/score-policy-rules.js";
+import { splitHistoricalData } from "../services/policy-calibration/split-historical-data.js";
 
 const policyCalibrationState = Annotation.Root({
   runId: Annotation<string>({
@@ -28,9 +32,25 @@ const policyCalibrationState = Annotation.Root({
     reducer: (_current, update) => update,
     default: () => undefined
   }),
+  calibrationAttempt: Annotation<number>({
+    reducer: (_current, update) => update,
+    default: () => 1
+  }),
   historicalRows: Annotation<PolicyCalibrationState["historicalRows"]>({
     reducer: (_current, update) => update,
     default: () => []
+  }),
+  trainingRows: Annotation<PolicyCalibrationState["trainingRows"]>({
+    reducer: (_current, update) => update,
+    default: () => []
+  }),
+  evaluationRows: Annotation<PolicyCalibrationState["evaluationRows"]>({
+    reducer: (_current, update) => update,
+    default: () => []
+  }),
+  datasetSplit: Annotation<PolicyCalibrationState["datasetSplit"]>({
+    reducer: (_current, update) => update,
+    default: () => undefined
   }),
   featureBuckets: Annotation<PolicyCalibrationState["featureBuckets"]>({
     reducer: (_current, update) => update,
@@ -45,6 +65,22 @@ const policyCalibrationState = Annotation.Root({
     default: () => undefined
   }),
   scorecard: Annotation<PolicyCalibrationState["scorecard"]>({
+    reducer: (_current, update) => update,
+    default: () => undefined
+  }),
+  bestCandidateRules: Annotation<PolicyCalibrationState["bestCandidateRules"]>({
+    reducer: (_current, update) => update,
+    default: () => undefined
+  }),
+  bestCritiqueReport: Annotation<PolicyCalibrationState["bestCritiqueReport"]>({
+    reducer: (_current, update) => update,
+    default: () => undefined
+  }),
+  bestScorecard: Annotation<PolicyCalibrationState["bestScorecard"]>({
+    reducer: (_current, update) => update,
+    default: () => undefined
+  }),
+  policyLawyerSummary: Annotation<PolicyCalibrationState["policyLawyerSummary"]>({
     reducer: (_current, update) => update,
     default: () => undefined
   }),
@@ -116,11 +152,19 @@ async function loadHistoricalDataNode(
   });
 }
 
+async function splitHistoricalDataNode(
+  state: PolicyCalibrationState
+): Promise<Partial<PolicyCalibrationState>> {
+  return runNode("splitHistoricalData", state, async () =>
+    splitHistoricalData(state.historicalRows)
+  );
+}
+
 async function buildFeatureBucketsNode(
   state: PolicyCalibrationState
 ): Promise<Partial<PolicyCalibrationState>> {
   return runNode("buildFeatureBuckets", state, async () => ({
-    featureBuckets: buildFeatureBuckets(state.historicalRows)
+    featureBuckets: buildFeatureBuckets(state.trainingRows)
   }));
 }
 
@@ -128,9 +172,11 @@ async function proposePolicyRulesNode(
   state: PolicyCalibrationState
 ): Promise<Partial<PolicyCalibrationState>> {
   return runNode("proposePolicyRules", state, async () => ({
-    candidateRules: (await proposePolicyRules(state.featureBuckets)).map((rule) =>
-      policyRuleDraftSchema.parse(rule)
-    )
+    candidateRules: (
+      await proposePolicyRules(state.featureBuckets, {
+        calibrationAttempt: state.calibrationAttempt
+      })
+    ).map((rule) => policyRuleDraftSchema.parse(rule))
   }));
 }
 
@@ -147,14 +193,54 @@ async function critiquePolicyRulesNode(
 async function scorePolicyRulesNode(
   state: PolicyCalibrationState
 ): Promise<Partial<PolicyCalibrationState>> {
-  return runNode("scorePolicyRules", state, async () => ({
-    scorecard: policyScorecardSchema.parse(
+  return runNode("scorePolicyRules", state, async () => {
+    const currentScorecard = policyScorecardSchema.parse(
       scorePolicyRules(
-        state.historicalRows,
+        state.evaluationRows,
         state.featureBuckets,
-        state.candidateRules
+        state.candidateRules,
+        state.trainingRows.length
       )
-    )
+    );
+    const bestPolicyScore = state.bestScorecard?.policyScore ?? -1;
+    const shouldPromoteCurrent = currentScorecard.policyScore >= bestPolicyScore;
+
+    return {
+      scorecard: currentScorecard,
+      bestScorecard: shouldPromoteCurrent ? currentScorecard : state.bestScorecard,
+      bestCandidateRules: shouldPromoteCurrent
+        ? state.candidateRules
+        : state.bestCandidateRules,
+      bestCritiqueReport: shouldPromoteCurrent
+        ? state.critiqueReport
+        : state.bestCritiqueReport
+    };
+  });
+}
+
+async function prepareRetryNode(
+  state: PolicyCalibrationState
+): Promise<Partial<PolicyCalibrationState>> {
+  return runNode("prepareRetry", state, async () => ({
+    calibrationAttempt: state.calibrationAttempt + 1
+  }));
+}
+
+async function finalizePolicyCandidateNode(
+  state: PolicyCalibrationState
+): Promise<Partial<PolicyCalibrationState>> {
+  return runNode("finalizePolicyCandidate", state, async () => ({
+    candidateRules: state.bestCandidateRules ?? state.candidateRules,
+    critiqueReport: state.bestCritiqueReport ?? state.critiqueReport,
+    scorecard: state.bestScorecard ?? state.scorecard
+  }));
+}
+
+async function explainPolicyForLawyerNode(
+  state: PolicyCalibrationState
+): Promise<Partial<PolicyCalibrationState>> {
+  return runNode("explainPolicyForLawyer", state, async () => ({
+    policyLawyerSummary: await explainPolicyForLawyer(state)
   }));
 }
 
@@ -168,17 +254,35 @@ async function publishPolicyVersionNode(
 
 export const policyCalibrationGraph = new StateGraph(policyCalibrationState)
   .addNode("loadHistoricalData", loadHistoricalDataNode)
+  .addNode("splitHistoricalData", splitHistoricalDataNode)
   .addNode("buildFeatureBuckets", buildFeatureBucketsNode)
   .addNode("proposePolicyRules", proposePolicyRulesNode)
   .addNode("critiquePolicyRules", critiquePolicyRulesNode)
   .addNode("scorePolicyRules", scorePolicyRulesNode)
+  .addNode("prepareRetry", prepareRetryNode)
+  .addNode("finalizePolicyCandidate", finalizePolicyCandidateNode)
+  .addNode("explainPolicyForLawyer", explainPolicyForLawyerNode)
   .addNode("publishPolicyVersion", publishPolicyVersionNode)
   .addEdge(START, "loadHistoricalData")
-  .addEdge("loadHistoricalData", "buildFeatureBuckets")
+  .addEdge("loadHistoricalData", "splitHistoricalData")
+  .addEdge("splitHistoricalData", "buildFeatureBuckets")
   .addEdge("buildFeatureBuckets", "proposePolicyRules")
   .addEdge("proposePolicyRules", "critiquePolicyRules")
   .addEdge("critiquePolicyRules", "scorePolicyRules")
-  .addEdge("scorePolicyRules", "publishPolicyVersion")
+  .addConditionalEdges("scorePolicyRules", (state) => {
+    if (
+      state.scorecard &&
+      state.scorecard.policyScore < TARGET_POLICY_SCORE &&
+      state.calibrationAttempt < MAX_POLICY_RETRIES
+    ) {
+      return "prepareRetry";
+    }
+
+    return "finalizePolicyCandidate";
+  })
+  .addEdge("prepareRetry", "proposePolicyRules")
+  .addEdge("finalizePolicyCandidate", "explainPolicyForLawyer")
+  .addEdge("explainPolicyForLawyer", "publishPolicyVersion")
   .addEdge("publishPolicyVersion", END)
   .compile();
 
@@ -189,7 +293,10 @@ export async function runPolicyCalibration(
     runId: input.runId,
     inputCsvPath: input.inputCsvPath,
     logsPath: input.logsPath,
+    calibrationAttempt: 1,
     historicalRows: [],
+    trainingRows: [],
+    evaluationRows: [],
     featureBuckets: [],
     candidateRules: [],
     errors: []

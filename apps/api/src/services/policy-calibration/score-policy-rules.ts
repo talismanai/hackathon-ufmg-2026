@@ -9,6 +9,7 @@ import { policyScorecardSchema } from "@grupo4/shared";
 import {
   buildOfferRange,
   fallbackAction,
+  isFavorableOutcome,
   matchesRule,
   riskBandFromLossProbability,
   toBucketKey
@@ -17,7 +18,8 @@ import {
 export function scorePolicyRules(
   historicalRows: HistoricalCaseRow[],
   featureBuckets: FeatureBucket[],
-  candidateRules: PolicyRuleDraft[]
+  candidateRules: PolicyRuleDraft[],
+  trainingRowsCount = featureBuckets.reduce((sum, bucket) => sum + bucket.sampleSize, 0)
 ): PolicyScorecard {
   const bucketsByKey = new Map(
     featureBuckets.map((bucket) => [bucket.bucketKey, bucket])
@@ -31,6 +33,7 @@ export function scorePolicyRules(
     review: 0
   };
   let matchedCases = 0;
+  let correctlyHandledCases = 0;
   let estimatedPolicyCost = 0;
   let baselineExpectedCost = 0;
 
@@ -63,6 +66,13 @@ export function scorePolicyRules(
 
     actionCounters[finalAction] += 1;
 
+    const expectedAction = isFavorableOutcome(row.outcome)
+      ? "defense"
+      : "agreement";
+    if (finalAction === expectedAction) {
+      correctlyHandledCases += 1;
+    }
+
     if (finalAction === "agreement") {
       estimatedPolicyCost += offerRange.target;
     } else if (finalAction === "review") {
@@ -76,11 +86,14 @@ export function scorePolicyRules(
 
   return policyScorecardSchema.parse({
     totalCases: historicalRows.length,
+    trainSampleSize: trainingRowsCount,
+    testSampleSize: historicalRows.length,
     matchedCases,
     coverageRate: matchedCases / totalCases,
     estimatedPolicyCost,
     baselineExpectedCost,
     estimatedSavings: baselineExpectedCost - estimatedPolicyCost,
+    policyScore: correctlyHandledCases / totalCases,
     agreementRate: actionCounters.agreement / totalCases,
     defenseRate: actionCounters.defense / totalCases,
     reviewRate: actionCounters.review / totalCases,
