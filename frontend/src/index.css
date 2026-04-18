@@ -1,0 +1,55 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --color-brand-navy: #0f2044;
+  --color-brand-navy-deep: #0a1734;
+  --color-brand-gold: #4f7cff;
+  --color-mist: #e8eef7;
+  --color-panel: #ffffff;
+  --color-border-soft: #d9dfeb;
+}
+
+@layer base {
+  :root {
+    color: #1a1a2e;
+    background: #f4f6f9;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    font-family: var(--font-sans);
+    background: #f4f6f9;
+    color: #1a1a2e;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .panel-shell {
+    @apply rounded-[8px] border border-border-soft bg-white shadow-[0_8px_24px_rgba(15,32,68,0.06)];
+  }
+
+  .page-card {
+    @apply rounded-[8px] border border-border-soft bg-white shadow-[0_6px_20px_rgba(15,32,68,0.05)];
+  }
+}
