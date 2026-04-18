@@ -7,8 +7,17 @@ Agora ela tambem pode rodar de forma independente, com servidor, demo e validaca
 
 - `agents/`
   - `PolicyGenerator/PolicyGeneratorAgent`: encapsula o workflow offline de calibracao.
-  - `PolicyGenerator/PolicyCritiqueAgent`: resume o resultado da calibracao.
+  - `PolicyGenerator/PolicyRulesAgent`: espelha a proposta de regras da calibracao.
+  - `PolicyGenerator/PolicyCritiqueAgent`: critica regras e resume o resultado da calibracao.
+  - `PolicyGenerator/PolicyToolResearchPlannerAgent`: espelha o planner de tools do workflow1.
+  - `PolicyGenerator/PolicyExplainForLawyerAgent`: espelha a explicacao final da policy.
   - `CaseAnalyzer/CaseAnalyzerAgent`: busca a policy mais recente, busca o caso e dispara a analise.
+  - `CaseAnalyzer/ExtractFactsAgent`: espelha a extracao inicial de fatos.
+  - `CaseAnalyzer/ExtractFactsCritiqueAgent`: espelha a critica dos fatos extraidos.
+  - `CaseAnalyzer/DecisionToolResearchPlannerAgent`: espelha o planner de tools do workflow2.
+  - `CaseAnalyzer/DecisionProposerAgent`: espelha a proposta inicial de decisao.
+  - `CaseAnalyzer/DecisionCritiqueAgent`: espelha a critica da decisao.
+  - `CaseAnalyzer/ExplainForLawyerAgent`: espelha a explicacao final ao advogado.
 - `configs/`
   - `SQLiteConfig`: expoe a conexao Prisma/SQLite atual.
   - `LocalStorageConfig`: define a pasta local de arquivos temporarios.
@@ -32,7 +41,7 @@ Agora ela tambem pode rodar de forma independente, com servidor, demo e validaca
 
 - Esta estrutura fica isolada em `new/backend`.
 - Nenhum arquivo do runtime atual foi redirecionado para ela.
-- As implementacoes aqui reutilizam os workflows e repositories existentes em `apps/api/src`, mas por meio de um servidor independente.
+- As implementacoes do `new/backend` agora foram internalizadas dentro desta propria arvore, sem depender de `apps/api/src`.
 
 ## Comandos
 

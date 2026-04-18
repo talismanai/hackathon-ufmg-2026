@@ -1,4 +1,4 @@
-import { prisma } from "../../../apps/api/src/db/client.js";
+import { prisma } from "../db/client.js";
 
 export const SQLiteConfig = {
   connection: prisma

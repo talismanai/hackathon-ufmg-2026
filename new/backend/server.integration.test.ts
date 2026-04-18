@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { makeFeatures } from "../../apps/api/src/test-helpers/policy-fixtures.js";
+import { makeFeatures } from "./test-helpers/policy-fixtures.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(currentDir, "../..");
@@ -70,7 +70,7 @@ test("new backend sobe independente e executa workflow1 + workflow2", async (con
   process.env.NODE_ENV = "test";
   process.env.NEW_LOCAL_STORAGE_TEMP_DIR = localStorageTempDir;
 
-  const pushResult = spawnSync("node", ["src/database/pushSchema.js"], {
+  const pushResult = spawnSync("node", ["new/backend/scripts/push-schema.js"], {
     cwd: rootDir,
     env: {
       ...process.env,
@@ -85,7 +85,7 @@ test("new backend sobe independente e executa workflow1 + workflow2", async (con
     pushResult.stderr || pushResult.stdout || "Falha ao criar schema de teste."
   );
 
-  const { prisma } = await import("../../apps/api/src/db/client.js");
+  const { prisma } = await import("./db/client.js");
   await prisma.historicalCase.createMany({
     data: buildHistoricalRows()
   });
@@ -165,6 +165,15 @@ test("new backend sobe independente e executa workflow1 + workflow2", async (con
 
   assert.equal(traceJsonResponse.statusCode, 200);
   assert.equal(traceJsonResponse.json().workflowType, "case_decision");
+
+  const resultResponse = await app.inject({
+    method: "GET",
+    url: `/api/case-analyzer/result?caseId=${caseBody.caseId}`
+  });
+
+  assert.equal(resultResponse.statusCode, 200);
+  assert.equal(resultResponse.json().analysisId, caseBody.analysisId);
+  assert.equal(resultResponse.json().decision.action, "agreement");
 
   const analyticsResponse = await app.inject({
     method: "GET",

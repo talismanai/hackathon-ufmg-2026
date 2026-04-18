@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-import { getTranscriptMasterFilePath } from "../../../../apps/api/src/lib/agent-transcript.js";
+import { getTranscriptMasterFilePath } from "../../lib/agent-transcript.js";
 import { CaseAnalyzerUseCase } from "../../usecase/CaseAnalyzerUseCase.js";
 
 const caseInputSchema = z.object({
@@ -37,6 +37,10 @@ const bodySchema = z.object({
   documents: z.array(documentSchema).min(1)
 });
 
+const resultQuerySchema = z.object({
+  caseId: z.string().min(1)
+});
+
 export class CaseAnalyzerApi {
   constructor(private readonly caseAnalyzerUseCase: CaseAnalyzerUseCase) {}
 
@@ -62,6 +66,41 @@ export class CaseAnalyzerApi {
         lawyerExplanation: result.analysis.lawyerExplanation ?? null,
         errors: result.analysis.errors
       });
+    });
+
+    app.get("/result", async (request, reply) => {
+      const query = resultQuerySchema.parse(request.query);
+
+      try {
+        const result = await this.caseAnalyzerUseCase.getResult({
+          caseId: query.caseId
+        });
+
+        return reply.send({
+          caseId: result.caseRecord.id,
+          analysisId: result.analysis.id,
+          transcriptPath: getTranscriptMasterFilePath({
+            workflowType: "case_decision",
+            caseId: result.caseRecord.id,
+            policyVersion: result.analysis.policyVersion
+          }),
+          traceViewerUrl: `/api/traces/case_decision/${result.caseRecord.id}/view`,
+          traceJsonUrl: `/api/traces/case_decision/${result.caseRecord.id}`,
+          caseRecord: result.caseRecord,
+          analysis: result.analysis,
+          decision: result.analysis.decision,
+          lawyerExplanation: result.analysis.explanationText ?? null,
+          errors: []
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao consultar resultado.";
+        const statusCode = message === "Caso nao encontrado." ? 404 : 409;
+
+        return reply.code(statusCode).send({
+          message
+        });
+      }
     });
   }
 }

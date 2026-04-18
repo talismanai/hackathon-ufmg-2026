@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import Fastify from "fastify";
 
-import { prisma } from "../../apps/api/src/db/client.js";
+import { prisma } from "./db/client.js";
 import { registerBackendApis } from "./transportlayers/api/registerBackendApis.js";
 
 const runtimeConfig = {

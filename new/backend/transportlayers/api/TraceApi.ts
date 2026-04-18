@@ -4,11 +4,11 @@ import { constants as fsConstants } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-import { getTranscriptMasterFilePathByExecution } from "../../../../apps/api/src/lib/agent-transcript.js";
+import { getTranscriptMasterFilePathByExecution } from "../../lib/agent-transcript.js";
 import {
   loadWorkflowTraceHtml,
   loadWorkflowTraceVisualization
-} from "../../../../apps/api/src/lib/agent-trace-visualization.js";
+} from "../../lib/agent-trace-visualization.js";
 
 const traceParamsSchema = z.object({
   workflowType: z.enum(["policy_calibration", "case_decision"]),

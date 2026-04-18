@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-import { getTranscriptMasterFilePath } from "../../../../apps/api/src/lib/agent-transcript.js";
+import { getTranscriptMasterFilePath } from "../../lib/agent-transcript.js";
 import { PolicyGeneratorUseCase } from "../../usecase/PolicyGeneratorUseCase.js";
 
 const bodySchema = z.object({

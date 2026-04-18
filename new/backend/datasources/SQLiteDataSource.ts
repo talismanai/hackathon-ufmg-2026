@@ -4,19 +4,19 @@ import {
   createLawyerAction,
   getCaseById,
   getCaseDocuments
-} from "../../../apps/api/src/db/repositories/case-repository.js";
+} from "../db/repositories/case-repository.js";
 import {
   getDashboardAdherence,
   getDashboardEffectiveness,
   getDashboardSummary
-} from "../../../apps/api/src/db/repositories/dashboard-repository.js";
+} from "../db/repositories/dashboard-repository.js";
 import {
   getActivePolicy,
   getPolicyByVersion,
   listPolicies
-} from "../../../apps/api/src/db/repositories/policy-repository.js";
-import { runCaseDecision } from "../../../apps/api/src/graphs/case-decision-graph.js";
-import { runPolicyCalibration } from "../../../apps/api/src/graphs/policy-calibration-graph.js";
+} from "../db/repositories/policy-repository.js";
+import { runCaseDecision } from "../graphs/case-decision-graph.js";
+import { runPolicyCalibration } from "../graphs/policy-calibration-graph.js";
 import type {
   AddCaseDocumentInput,
   CreateCaseInput,

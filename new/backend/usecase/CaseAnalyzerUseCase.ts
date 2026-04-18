@@ -72,4 +72,24 @@ export class CaseAnalyzerUseCase {
       analysis
     };
   }
+
+  async getResult(input: { caseId: string }): Promise<{
+    caseRecord: CaseRecord;
+    analysis: NonNullable<CaseRecord["latestAnalysis"]>;
+  }> {
+    const caseRecord = await this.sqliteRepository.getCaseById(input.caseId);
+
+    if (!caseRecord) {
+      throw new Error("Caso nao encontrado.");
+    }
+
+    if (!caseRecord.latestAnalysis) {
+      throw new Error("Caso encontrado, mas ainda sem analise final.");
+    }
+
+    return {
+      caseRecord,
+      analysis: caseRecord.latestAnalysis
+    };
+  }
 }
