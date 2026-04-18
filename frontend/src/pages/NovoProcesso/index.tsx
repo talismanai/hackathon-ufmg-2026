@@ -467,11 +467,6 @@ export function NovoProcessoPage() {
               {submissionError}
             </p>
           ) : null}
-
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            O caso só será aberto na tela de resultado após o backend concluir a
-            análise inicial e atualizar o status.
-          </p>
         </div>
       </section>
     </div>
