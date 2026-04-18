@@ -9,6 +9,7 @@ import {
   listCases
 } from "../db/repositories/case-repository.js";
 import { runCaseDecision } from "../graphs/case-decision-graph.js";
+import { getTranscriptMasterFilePath } from "../lib/agent-transcript.js";
 
 const createCaseBodySchema = z.object({
   externalCaseNumber: z.string().min(1).optional(),
@@ -138,6 +139,13 @@ export async function registerCaseRoutes(app: FastifyInstance): Promise<void> {
 
     return reply.code(201).send({
       analysisId: result.analysisId,
+      transcriptPath: getTranscriptMasterFilePath({
+        workflowType: "case_decision",
+        caseId: params.caseId,
+        policyVersion: result.policyVersion
+      }),
+      traceViewerUrl: `/api/traces/case_decision/${params.caseId}/view`,
+      traceJsonUrl: `/api/traces/case_decision/${params.caseId}`,
       decision: result.finalDecision,
       lawyerExplanation: result.lawyerExplanation,
       similarCases: result.similarCases,

@@ -104,6 +104,14 @@ test("workflow1 via API calibra policy, persiste e expõe policy ativa", async (
   assert.equal(calibrateBody.runId, "integration-run-001");
   assert.equal(calibrateBody.errors.length, 0);
   assert.ok(calibrateBody.candidateRules >= 1);
+  assert.equal(
+    calibrateBody.traceViewerUrl,
+    "/api/traces/policy_calibration/integration-run-001/view"
+  );
+  assert.equal(
+    calibrateBody.traceJsonUrl,
+    "/api/traces/policy_calibration/integration-run-001"
+  );
   assert.equal(calibrateBody.publishedPolicy.status, "published");
   assert.equal(calibrateBody.publishedPolicy.datasetSplit.trainRows, 40);
   assert.equal(calibrateBody.publishedPolicy.datasetSplit.testRows, 18);
@@ -137,6 +145,26 @@ test("workflow1 via API calibra policy, persiste e expõe policy ativa", async (
 
   const listBody = listResponse.json();
   assert.equal(listBody.items.length, 1);
+
+  const traceJsonResponse = await app.inject({
+    method: "GET",
+    url: calibrateBody.traceJsonUrl
+  });
+
+  assert.equal(traceJsonResponse.statusCode, 200);
+  const traceJsonBody = traceJsonResponse.json();
+  assert.equal(traceJsonBody.workflowType, "policy_calibration");
+  assert.ok(traceJsonBody.eventCount >= 1);
+  assert.match(traceJsonBody.mermaid, /flowchart TD/);
+
+  const traceViewResponse = await app.inject({
+    method: "GET",
+    url: calibrateBody.traceViewerUrl
+  });
+
+  assert.equal(traceViewResponse.statusCode, 200);
+  assert.match(traceViewResponse.body, /Detalhes Dos Eventos/);
+  assert.match(traceViewResponse.body, /proposePolicyRules/);
 
   const agentRunCount = await prisma.agentRun.count({
     where: {

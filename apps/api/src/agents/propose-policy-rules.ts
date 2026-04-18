@@ -1,16 +1,36 @@
 import {
+  type DatasetSplitSummary,
   MIN_BUCKET_SAMPLE_SIZE,
   OFFER_FACTORS_BY_RISK_BAND,
   type FeatureBucket,
+  type HistoricalCaseRow,
   type PolicyRuleDraft
 } from "@grupo4/shared";
 import { policyRuleDraftSchema } from "@grupo4/shared";
+import { z } from "zod";
 
 import {
   bucketSummaryFromFeatures,
   buildRuleConditions,
   riskBandFromLossProbability
 } from "../lib/policy-calibration.js";
+import type { AgentTraceContext } from "../lib/agent-transcript.js";
+import {
+  buildToolResearchPayload,
+  executeToolCallsFromMessage,
+  isOpenAIConfigured,
+  invokeStructuredWithFallback
+} from "../lib/llm.js";
+import {
+  planPolicyToolResearchPrompt,
+  proposePolicyRulesPrompt
+} from "../prompts/policy-calibration.js";
+import { policyCalibrationTools } from "../tools/policy-calibration-tools.js";
+import { planPolicyToolResearch } from "./plan-policy-tool-research.js";
+
+const policyRulesResponseSchema = z.object({
+  rules: z.array(policyRuleDraftSchema).min(1)
+});
 
 function buildRule(
   bucket: FeatureBucket,
@@ -49,7 +69,7 @@ function buildRule(
   });
 }
 
-export async function proposePolicyRules(
+async function proposePolicyRulesDeterministically(
   featureBuckets: FeatureBucket[],
   options?: {
     calibrationAttempt?: number;
@@ -124,4 +144,94 @@ export async function proposePolicyRules(
   }
 
   return rules;
+}
+
+async function buildPolicyRuleToolResearch(
+  featureBuckets: FeatureBucket[],
+  options?: {
+    runId?: string;
+    calibrationAttempt?: number;
+    historicalRows?: HistoricalCaseRow[];
+    datasetSplit?: DatasetSplitSummary;
+    trace?: AgentTraceContext;
+  }
+): Promise<Record<string, unknown>> {
+  const planningMessage = await planPolicyToolResearch(
+    {
+      runId: options?.runId ?? "policy_rules_agent",
+      calibrationAttempt: options?.calibrationAttempt ?? 1,
+      datasetSplit: options?.datasetSplit,
+      historicalRows: options?.historicalRows ?? [],
+      featureBuckets
+    },
+    options?.trace
+  );
+
+  const executedToolCalls = await executeToolCallsFromMessage({
+    message: planningMessage,
+    tools: policyCalibrationTools,
+    trace: options?.trace,
+    executionLabel: "propose_policy_rules"
+  });
+
+  return buildToolResearchPayload(planningMessage, executedToolCalls);
+}
+
+export async function proposePolicyRules(
+  featureBuckets: FeatureBucket[],
+  options?: {
+    runId?: string;
+    calibrationAttempt?: number;
+    historicalRows?: HistoricalCaseRow[];
+    datasetSplit?: DatasetSplitSummary;
+    toolResearch?: Record<string, unknown>;
+    trace?: AgentTraceContext;
+  }
+): Promise<PolicyRuleDraft[]> {
+  const calibrationAttempt = options?.calibrationAttempt ?? 1;
+  const agentToolResearch = isOpenAIConfigured()
+    ? await buildPolicyRuleToolResearch(featureBuckets, options)
+    : {};
+  const combinedToolResearch = {
+    preloadedToolResearch: options?.toolResearch ?? {},
+    inAgentToolResearch: agentToolResearch
+  };
+
+  const response = await invokeStructuredWithFallback({
+    systemPrompt: proposePolicyRulesPrompt,
+    userPrompt: [
+      `Tentativa de calibracao: ${calibrationAttempt}.`,
+      "Antes da resposta final, o agente executou um ciclo explicito de reason -> tool -> reason.",
+      `Prompt do planejamento de pesquisa:\n${planPolicyToolResearchPrompt}`,
+      "Use apenas os buckets abaixo.",
+      "Priorize regras objetivas, auditaveis e operacionais.",
+      "Resultado das tools de banco:",
+      JSON.stringify(combinedToolResearch, null, 2),
+      "Referencia deterministica inicial:",
+      JSON.stringify(
+        await proposePolicyRulesDeterministically(featureBuckets, options),
+        null,
+        2
+      ),
+      "Buckets disponiveis:",
+      JSON.stringify(
+        featureBuckets
+          .sort(
+            (left, right) =>
+              right.expectedJudicialCost - left.expectedJudicialCost ||
+              right.sampleSize - left.sampleSize
+          )
+          .slice(0, 80),
+        null,
+        2
+      )
+    ].join("\n\n"),
+    schema: policyRulesResponseSchema,
+    trace: options?.trace,
+    fallback: async () => ({
+      rules: await proposePolicyRulesDeterministically(featureBuckets, options)
+    })
+  });
+
+  return response.rules.map((rule) => policyRuleDraftSchema.parse(rule));
 }

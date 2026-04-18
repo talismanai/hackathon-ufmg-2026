@@ -1,4 +1,11 @@
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
+import { Annotation, END, START, StateGraph, addMessages } from "@langchain/langgraph";
+import {
+  AIMessage,
+  isAIMessage,
+  isToolMessage,
+  type BaseMessage
+} from "@langchain/core/messages";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 import {
   CASE_DECISION_WORKFLOW,
   caseDecisionSchema,
@@ -14,7 +21,9 @@ import { critiqueDecision } from "../agents/critique-decision.js";
 import { explainForLawyer } from "../agents/explain-for-lawyer.js";
 import { extractFactsAction } from "../agents/extract-facts-action.js";
 import { extractFactsCritique } from "../agents/extract-facts-critique.js";
+import { planDecisionToolResearch } from "../agents/plan-decision-tool-research.js";
 import { proposeDecisionAction } from "../agents/propose-decision-action.js";
+import { env } from "../config/env.js";
 import { createAgentRun } from "../db/repositories/agent-run-repository.js";
 import { persistCaseAnalysis } from "../db/repositories/case-repository.js";
 import {
@@ -24,6 +33,26 @@ import {
 import { ingestCase } from "../services/case-decision/ingest-case.js";
 import { retrieveSimilarCases } from "../services/case-decision/retrieve-similar-cases.js";
 import { scoreCaseRisk } from "../services/case-decision/score-risk.js";
+import { caseDecisionTools } from "../tools/case-decision-tools.js";
+
+type GraphCaseDecisionState = CaseDecisionState & {
+  messages: BaseMessage[];
+  toolResearch?: Record<string, unknown>;
+};
+
+const caseDecisionToolNode = new ToolNode(caseDecisionTools);
+
+function parseToolContent(content: unknown): unknown {
+  if (typeof content === "string") {
+    try {
+      return JSON.parse(content);
+    } catch {
+      return content;
+    }
+  }
+
+  return content;
+}
 
 const caseDecisionState = Annotation.Root({
   caseId: Annotation<string>({
@@ -90,15 +119,23 @@ const caseDecisionState = Annotation.Root({
     reducer: (_current, update) => update,
     default: () => undefined
   }),
+  messages: Annotation<BaseMessage[]>({
+    reducer: addMessages,
+    default: () => []
+  }),
+  toolResearch: Annotation<Record<string, unknown> | undefined>({
+    reducer: (_current, update) => update,
+    default: () => undefined
+  }),
   errors: Annotation<string[]>({
     reducer: (_current, update) => update,
     default: () => []
   })
 });
 
-async function runNode<TDelta extends Partial<CaseDecisionState>>(
+async function runNode<TDelta extends Partial<GraphCaseDecisionState>>(
   agentName: string,
-  state: CaseDecisionState,
+  state: GraphCaseDecisionState,
   fn: () => Promise<TDelta>
 ): Promise<TDelta> {
   if (state.errors.length > 0) {
@@ -110,6 +147,7 @@ async function runNode<TDelta extends Partial<CaseDecisionState>>(
     await createAgentRun({
       workflowType: CASE_DECISION_WORKFLOW,
       caseId: state.caseId,
+      policyVersion: state.policyVersion || undefined,
       agentName,
       input: {
         caseId: state.caseId,
@@ -127,6 +165,7 @@ async function runNode<TDelta extends Partial<CaseDecisionState>>(
     await createAgentRun({
       workflowType: CASE_DECISION_WORKFLOW,
       caseId: state.caseId,
+      policyVersion: state.policyVersion || undefined,
       agentName,
       input: {
         caseId: state.caseId,
@@ -144,26 +183,31 @@ async function runNode<TDelta extends Partial<CaseDecisionState>>(
 }
 
 async function ingestCaseNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("ingestCase", state, async () =>
     ingestCase(state.caseId, state.policyVersion || undefined)
   );
 }
 
 async function extractFactsActionNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("extractFactsAction", state, async () => ({
     extractedFactsDraft: extractedFactsSchema.parse(
-      await extractFactsAction(state.documents)
+      await extractFactsAction(state.documents, {
+        workflowType: CASE_DECISION_WORKFLOW,
+        agentName: "extractFactsAction",
+        caseId: state.caseId,
+        policyVersion: state.policyVersion || undefined
+      })
     )
   }));
 }
 
 async function extractFactsCritiqueNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("extractFactsCritique", state, async () => ({
     extractedFactsCritique: critiqueResultSchema.parse(
       await extractFactsCritique(
@@ -171,15 +215,21 @@ async function extractFactsCritiqueNode(
           (() => {
             throw new Error("Nao foi possivel criticar fatos sem o draft inicial.");
           })(),
-        state.documents
+        state.documents,
+        {
+          workflowType: CASE_DECISION_WORKFLOW,
+          agentName: "extractFactsCritique",
+          caseId: state.caseId,
+          policyVersion: state.policyVersion || undefined
+        }
       )
     )
   }));
 }
 
 async function finalizeFactsNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("finalizeFacts", state, async () => {
     if (!state.extractedFactsDraft || !state.extractedFactsCritique) {
       throw new Error("Nao foi possivel consolidar fatos sem draft e critica.");
@@ -197,8 +247,8 @@ async function finalizeFactsNode(
 }
 
 async function retrieveSimilarCasesNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("retrieveSimilarCases", state, async () => {
     if (!state.caseRecord || !state.normalizedFacts) {
       throw new Error("Nao foi possivel recuperar historico similar sem caso e fatos.");
@@ -213,8 +263,8 @@ async function retrieveSimilarCasesNode(
 }
 
 async function scoreRiskNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("scoreRisk", state, async () => {
     if (!state.similarCases) {
       throw new Error("Nao foi possivel calcular risco sem casos similares.");
@@ -226,9 +276,102 @@ async function scoreRiskNode(
   });
 }
 
+async function planDecisionToolResearchNode(
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
+  return runNode("planDecisionToolResearch", state, async () => {
+    if (
+      !state.caseRecord ||
+      !state.activePolicy ||
+      !state.normalizedFacts ||
+      !state.similarCases ||
+      !state.riskScore
+    ) {
+      throw new Error("Estado insuficiente para planejar consultas com tools.");
+    }
+
+    const response = await planDecisionToolResearch(
+      {
+        caseId: state.caseId,
+        policyVersion: state.policyVersion,
+        caseRecord: {
+          id: state.caseRecord.id,
+          externalCaseNumber: state.caseRecord.externalCaseNumber,
+          processType: state.caseRecord.processType,
+          uf: state.caseRecord.uf,
+          claimAmountCents: state.caseRecord.claimAmountCents,
+          status: state.caseRecord.status
+        },
+        activePolicy: {
+          version: state.activePolicy.version,
+          name: state.activePolicy.name,
+          status: state.activePolicy.status,
+          minOffer: state.activePolicy.minOffer,
+          maxOffer: state.activePolicy.maxOffer
+        },
+        facts: state.normalizedFacts,
+        similarCases: state.similarCases,
+        risk: state.riskScore
+      },
+      {
+        workflowType: CASE_DECISION_WORKFLOW,
+        agentName: "planDecisionToolResearch",
+        caseId: state.caseId,
+        policyVersion: state.policyVersion || undefined
+      }
+    );
+
+    return {
+      messages: [response]
+    };
+  });
+}
+
+async function executeDecisionResearchToolsNode(
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
+  return runNode("executeDecisionResearchTools", state, async () => {
+    const toolResult = await caseDecisionToolNode.invoke({
+      messages: state.messages
+    });
+
+    return {
+      messages: toolResult.messages as BaseMessage[]
+    };
+  });
+}
+
+async function summarizeDecisionToolResearchNode(
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
+  return runNode("summarizeDecisionToolResearch", state, async () => {
+    const aiMessages = state.messages.filter(isAIMessage);
+    const toolMessages = state.messages.filter(isToolMessage);
+    const requestedToolCalls = aiMessages.flatMap((message) =>
+      (message.tool_calls ?? []).map((toolCall) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        args: toolCall.args
+      }))
+    );
+    const toolResults = toolMessages.map((message) => ({
+      name: message.name ?? "unknown_tool",
+      toolCallId: message.tool_call_id,
+      result: parseToolContent(message.content)
+    }));
+
+    return {
+      toolResearch: {
+        requestedToolCalls,
+        toolResults
+      }
+    };
+  });
+}
+
 async function proposeDecisionActionNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("proposeDecisionAction", state, async () => {
     if (!state.activePolicy || !state.caseRecord || !state.normalizedFacts || !state.riskScore) {
       throw new Error("Estado insuficiente para propor decisao.");
@@ -240,7 +383,15 @@ async function proposeDecisionActionNode(
           state.activePolicy,
           state.caseRecord,
           state.normalizedFacts,
-          state.riskScore
+          state.riskScore,
+          state.similarCases,
+          state.toolResearch,
+          {
+            workflowType: CASE_DECISION_WORKFLOW,
+            agentName: "proposeDecisionAction",
+            caseId: state.caseId,
+            policyVersion: state.policyVersion || undefined
+          }
         )
       )
     };
@@ -248,8 +399,8 @@ async function proposeDecisionActionNode(
 }
 
 async function critiqueDecisionNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("critiqueDecision", state, async () => {
     if (!state.decisionDraft || !state.normalizedFacts) {
       throw new Error("Nao foi possivel criticar decisao sem draft e fatos.");
@@ -257,15 +408,20 @@ async function critiqueDecisionNode(
 
     return {
       decisionCritique: critiqueResultSchema.parse(
-        await critiqueDecision(state.decisionDraft, state.normalizedFacts)
+        await critiqueDecision(state.decisionDraft, state.normalizedFacts, {
+          workflowType: CASE_DECISION_WORKFLOW,
+          agentName: "critiqueDecision",
+          caseId: state.caseId,
+          policyVersion: state.policyVersion || undefined
+        })
       )
     };
   });
 }
 
 async function finalizeDecisionNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("finalizeDecision", state, async () => {
     if (
       !state.activePolicy ||
@@ -294,8 +450,8 @@ async function finalizeDecisionNode(
 }
 
 async function explainForLawyerNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("explainForLawyer", state, async () => {
     if (
       !state.finalDecision ||
@@ -314,14 +470,19 @@ async function explainForLawyerNode(
         similarCases: state.similarCases,
         risk: state.riskScore,
         critique: state.decisionCritique
+      }, {
+        workflowType: CASE_DECISION_WORKFLOW,
+        agentName: "explainForLawyer",
+        caseId: state.caseId,
+        policyVersion: state.policyVersion || undefined
       })
     };
   });
 }
 
 async function persistDecisionNode(
-  state: CaseDecisionState
-): Promise<Partial<CaseDecisionState>> {
+  state: GraphCaseDecisionState
+): Promise<Partial<GraphCaseDecisionState>> {
   return runNode("persistDecision", state, async () => {
     if (
       !state.finalDecision ||
@@ -364,6 +525,9 @@ export const caseDecisionGraph = new StateGraph(caseDecisionState)
   .addNode("finalizeFacts", finalizeFactsNode)
   .addNode("retrieveSimilarCases", retrieveSimilarCasesNode)
   .addNode("scoreRisk", scoreRiskNode)
+  .addNode("planDecisionToolResearch", planDecisionToolResearchNode)
+  .addNode("executeDecisionResearchTools", executeDecisionResearchToolsNode)
+  .addNode("summarizeDecisionToolResearch", summarizeDecisionToolResearchNode)
   .addNode("proposeDecisionAction", proposeDecisionActionNode)
   .addNode("critiqueDecision", critiqueDecisionNode)
   .addNode("finalizeDecision", finalizeDecisionNode)
@@ -375,7 +539,24 @@ export const caseDecisionGraph = new StateGraph(caseDecisionState)
   .addEdge("extractFactsCritique", "finalizeFacts")
   .addEdge("finalizeFacts", "retrieveSimilarCases")
   .addEdge("retrieveSimilarCases", "scoreRisk")
-  .addEdge("scoreRisk", "proposeDecisionAction")
+  .addConditionalEdges("scoreRisk", () => {
+    if (env.workflow2FastMode) {
+      return "proposeDecisionAction";
+    }
+
+    return "planDecisionToolResearch";
+  })
+  .addConditionalEdges("planDecisionToolResearch", (state) => {
+    const lastMessage = state.messages[state.messages.length - 1];
+
+    if (lastMessage && isAIMessage(lastMessage) && (lastMessage.tool_calls?.length ?? 0) > 0) {
+      return "executeDecisionResearchTools";
+    }
+
+    return "summarizeDecisionToolResearch";
+  })
+  .addEdge("executeDecisionResearchTools", "summarizeDecisionToolResearch")
+  .addEdge("summarizeDecisionToolResearch", "proposeDecisionAction")
   .addEdge("proposeDecisionAction", "critiqueDecision")
   .addEdge("critiqueDecision", "finalizeDecision")
   .addEdge("finalizeDecision", "explainForLawyer")
@@ -387,11 +568,17 @@ export async function runCaseDecision(input: {
   caseId: string;
   policyVersion?: string;
 }): Promise<CaseDecisionState> {
-  return caseDecisionGraph.invoke({
-    caseId: input.caseId,
-    policyVersion: input.policyVersion ?? "",
-    documents: [],
-    rawTextByDocType: {},
-    errors: []
-  });
+  return caseDecisionGraph.invoke(
+    {
+      caseId: input.caseId,
+      policyVersion: input.policyVersion ?? "",
+      documents: [],
+      rawTextByDocType: {},
+      messages: [],
+      errors: []
+    },
+    {
+      recursionLimit: 100
+    }
+  );
 }

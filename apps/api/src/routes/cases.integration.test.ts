@@ -158,6 +158,34 @@ test("workflow2 via API analisa casos, registra a acao do advogado e alimenta da
   assert.equal(agreementAnalysis.decision.action, "agreement");
   assert.ok(agreementAnalysis.decision.offerTarget > 0);
   assert.match(agreementAnalysis.lawyerExplanation, /Recomendacao: Acordo/);
+  assert.equal(
+    agreementAnalysis.traceViewerUrl,
+    `/api/traces/case_decision/${agreementCaseId}/view`
+  );
+  assert.equal(
+    agreementAnalysis.traceJsonUrl,
+    `/api/traces/case_decision/${agreementCaseId}`
+  );
+
+  const agreementTraceJson = await app.inject({
+    method: "GET",
+    url: agreementAnalysis.traceJsonUrl
+  });
+
+  assert.equal(agreementTraceJson.statusCode, 200);
+  const agreementTraceBody = agreementTraceJson.json();
+  assert.equal(agreementTraceBody.workflowType, "case_decision");
+  assert.ok(agreementTraceBody.eventCount >= 1);
+  assert.match(agreementTraceBody.mermaid, /flowchart TD/);
+
+  const agreementTraceView = await app.inject({
+    method: "GET",
+    url: agreementAnalysis.traceViewerUrl
+  });
+
+  assert.equal(agreementTraceView.statusCode, 200);
+  assert.match(agreementTraceView.body, /proposeDecisionAction/);
+  assert.match(agreementTraceView.body, /Detalhes Dos Eventos/);
 
   const createDefenseCase = await app.inject({
     method: "POST",

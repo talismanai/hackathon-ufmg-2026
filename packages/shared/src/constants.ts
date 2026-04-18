@@ -5,10 +5,17 @@ export const CASE_DECISION_WORKFLOW = "case_decision";
 
 export const POLICY_CALIBRATION_NODE_NAMES = [
   "loadHistoricalData",
+  "splitHistoricalData",
   "buildFeatureBuckets",
+  "planPolicyToolResearch",
+  "executePolicyResearchTools",
+  "summarizePolicyToolResearch",
   "proposePolicyRules",
   "critiquePolicyRules",
   "scorePolicyRules",
+  "prepareRetry",
+  "finalizePolicyCandidate",
+  "explainPolicyForLawyer",
   "publishPolicyVersion"
 ] as const;
 
@@ -19,6 +26,9 @@ export const CASE_DECISION_NODE_NAMES = [
   "finalizeFacts",
   "retrieveSimilarCases",
   "scoreRisk",
+  "planDecisionToolResearch",
+  "executeDecisionResearchTools",
+  "summarizeDecisionToolResearch",
   "proposeDecisionAction",
   "critiqueDecision",
   "finalizeDecision",

@@ -8,6 +8,7 @@ import { prisma } from "./db/client.js";
 import { registerCaseRoutes } from "./routes/cases.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerPolicyRoutes } from "./routes/policies.js";
+import { registerTraceRoutes } from "./routes/traces.js";
 
 export function createServer() {
   const app = Fastify({
@@ -21,6 +22,7 @@ export function createServer() {
   app.register(registerCaseRoutes);
   app.register(registerDashboardRoutes);
   app.register(registerPolicyRoutes);
+  app.register(registerTraceRoutes);
 
   app.addHook("onClose", async () => {
     await prisma.$disconnect();

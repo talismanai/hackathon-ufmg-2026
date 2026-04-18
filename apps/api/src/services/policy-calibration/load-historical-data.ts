@@ -12,7 +12,7 @@ function toBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === "1";
 }
 
-function normalizeHistoricalRow(row: {
+export function normalizeHistoricalRow(row: {
   caseNumber: string;
   processType?: string | null;
   uf?: string | null;

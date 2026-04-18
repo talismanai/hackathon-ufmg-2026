@@ -27,6 +27,7 @@ build/
 *.log
 *.tmp
 *.cache
+logs/agent-traces/
 .DS_Store
 Thumbs.db
 

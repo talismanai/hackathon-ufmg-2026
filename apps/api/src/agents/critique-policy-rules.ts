@@ -6,7 +6,11 @@ import {
 } from "@grupo4/shared";
 import { policyCritiqueReportSchema } from "@grupo4/shared";
 
-export async function critiquePolicyRules(
+import type { AgentTraceContext } from "../lib/agent-transcript.js";
+import { invokeStructuredWithFallback } from "../lib/llm.js";
+import { critiquePolicyRulesPrompt } from "../prompts/policy-calibration.js";
+
+async function critiquePolicyRulesDeterministically(
   rules: PolicyRuleDraft[]
 ): Promise<PolicyCritiqueReport> {
   const issues: PolicyCritiqueIssue[] = [];
@@ -81,5 +85,26 @@ export async function critiquePolicyRules(
         ? "Politica operacionalizavel para o MVP, com ressalvas conhecidas sobre cobertura dos sinais historicos."
         : "A politica precisa de ajuste antes de ser promovida sem supervisao.",
     issues
+  });
+}
+
+export async function critiquePolicyRules(
+  rules: PolicyRuleDraft[],
+  toolResearch?: Record<string, unknown>,
+  trace?: AgentTraceContext
+): Promise<PolicyCritiqueReport> {
+  return invokeStructuredWithFallback({
+    systemPrompt: critiquePolicyRulesPrompt,
+    userPrompt: [
+      "Critique estas regras de policy.",
+      `Campos ja expostos no workflow online: ${[
+        ...ONLINE_COMPATIBLE_POLICY_FIELDS
+      ].join(", ")}.`,
+      `Tool research:\n${JSON.stringify(toolResearch ?? {}, null, 2)}`,
+      JSON.stringify(rules, null, 2)
+    ].join("\n\n"),
+    schema: policyCritiqueReportSchema,
+    trace,
+    fallback: () => critiquePolicyRulesDeterministically(rules)
   });
 }

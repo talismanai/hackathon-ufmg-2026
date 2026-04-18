@@ -1,5 +1,9 @@
 import type { PolicyCalibrationState } from "@grupo4/shared";
 
+import type { AgentTraceContext } from "../lib/agent-transcript.js";
+import { invokeTextWithFallback } from "../lib/llm.js";
+import { explainPolicyForLawyerPrompt } from "../prompts/policy-calibration.js";
+
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
@@ -8,7 +12,7 @@ function formatCurrency(value: number): string {
   return `R$ ${value.toFixed(2)}`;
 }
 
-export async function explainPolicyForLawyer(
+async function explainPolicyForLawyerDeterministically(
   state: Pick<
     PolicyCalibrationState,
     "candidateRules" | "scorecard" | "datasetSplit" | "calibrationAttempt"
@@ -53,4 +57,31 @@ export async function explainPolicyForLawyer(
   ];
 
   return lines.join(" ");
+}
+
+export async function explainPolicyForLawyer(
+  state: Pick<
+    PolicyCalibrationState,
+    "candidateRules" | "scorecard" | "datasetSplit" | "calibrationAttempt"
+  >,
+  trace?: AgentTraceContext
+): Promise<string> {
+  return invokeTextWithFallback({
+    systemPrompt: explainPolicyForLawyerPrompt,
+    userPrompt: [
+      "Explique esta policy para um advogado em linguagem simples.",
+      JSON.stringify(
+        {
+          calibrationAttempt: state.calibrationAttempt,
+          datasetSplit: state.datasetSplit,
+          scorecard: state.scorecard,
+          candidateRules: state.candidateRules
+        },
+        null,
+        2
+      )
+    ].join("\n\n"),
+    trace,
+    fallback: () => explainPolicyForLawyerDeterministically(state)
+  });
 }

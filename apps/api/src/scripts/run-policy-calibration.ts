@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import "../config/env.js";
 import { prisma } from "../db/client.js";
 import { runPolicyCalibration } from "../graphs/policy-calibration-graph.js";
+import { getTranscriptMasterFilePath } from "../lib/agent-transcript.js";
 import { safeStringify } from "../lib/json.js";
 
 function readArgument(flag: string): string | undefined {
@@ -20,6 +21,11 @@ async function main(): Promise<void> {
   console.log(
     safeStringify({
       runId: result.runId,
+      transcriptPath: getTranscriptMasterFilePath({
+        workflowType: "policy_calibration",
+        runId: result.runId,
+        logsPath: result.logsPath
+      }),
       errors: result.errors,
       calibrationAttempt: result.calibrationAttempt,
       datasetSplit: result.datasetSplit,
