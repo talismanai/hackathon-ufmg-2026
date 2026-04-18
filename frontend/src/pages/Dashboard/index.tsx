@@ -2,15 +2,13 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Download,
-  Filter,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bar,
   BarChart,
   Cell,
-  Legend,
   Pie,
   PieChart,
   Tooltip,
@@ -20,7 +18,6 @@ import {
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Select";
 import { getDashboardAnalytics } from "@/services/api";
 
 type KpiDirection = "up" | "down";
@@ -32,134 +29,135 @@ interface DashboardKpi {
   direction: KpiDirection;
 }
 
-interface VarianceDatum {
-  month: string;
-  previsto: number;
-  real: number;
+interface SavingsItem {
+  id: string;
+  caseId: string;
+  analysisId: string;
+  externalCaseNumber: string | null;
+  aiRecommendation: string;
+  approvalStatus: string;
+  feedbackText: string;
+  estimatedCauseValueBrl: number | null;
+  createdAt: string;
 }
 
-interface DivergenceDatum {
+interface FeedbackSavings {
+  totalFeedbacks: number;
+  approvedFeedbacks: number;
+  rejectedFeedbacks: number;
+  totalSavedCostBrl: number;
+  items: SavingsItem[];
+}
+
+interface DashboardAnalyticsResponse {
+  feedbackSavings?: FeedbackSavings;
+}
+
+interface SavingsByMonthDatum {
+  month: string;
+  total: number;
+}
+
+interface DecisionSplitDatum {
   name: string;
   value: number;
   color: string;
 }
 
-interface AuditRow {
-  caseId: string;
-  processId: string;
-  escritorio: string;
-  previsto: number;
-  real: number;
-  variancia: string;
-  status: string;
+const emptyFeedbackSavings: FeedbackSavings = {
+  totalFeedbacks: 0,
+  approvedFeedbacks: 0,
+  rejectedFeedbacks: 0,
+  totalSavedCostBrl: 0,
+  items: [],
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-const officeOptions = [
-  { label: "Todos os escritórios", value: "all" },
-  { label: "Costa & Associados", value: "costa" },
-  { label: "Juris Minas", value: "juris" },
-  { label: "Núcleo Contencioso BH", value: "nucleo" },
-];
+function parseFeedbackSavings(raw: unknown): FeedbackSavings {
+  if (!isRecord(raw) || !isRecord(raw.feedbackSavings)) {
+    return emptyFeedbackSavings;
+  }
 
-const actionOptions = [
-  { label: "Todos os tipos", value: "all" },
-  { label: "Ação Indenizatória", value: "indenizatoria" },
-  { label: "Cobrança Indevida", value: "cobranca" },
-  { label: "Revisão Contratual", value: "revisao" },
-];
+  const feedbackSavings = raw.feedbackSavings;
+  const itemsRaw = Array.isArray(feedbackSavings.items)
+    ? feedbackSavings.items
+    : [];
 
-const defaultKpis: DashboardKpi[] = [
-  {
-    label: "Taxa de Aderência",
-    value: "94,2%",
-    trend: "+1,2% vs mês anterior",
-    direction: "up",
-  },
-  {
-    label: "Economia Gerada",
-    value: "R$ 4,2M",
-    trend: "+8,4% YTD",
-    direction: "up",
-  },
-  {
-    label: "Tempo Médio de Fechamento",
-    value: "42 dias",
-    trend: "-3 dias trend",
-    direction: "down",
-  },
-  {
-    label: "Efetividade",
-    value: "88,5%",
-    trend: "+0,5% resultados favoráveis",
-    direction: "up",
-  },
-];
+  const items = itemsRaw
+    .map((item): SavingsItem | null => {
+      if (!isRecord(item)) {
+        return null;
+      }
 
-const defaultVarianceData: VarianceDatum[] = [
-  { month: "JAN", previsto: 2.4, real: 1.9 },
-  { month: "FEV", previsto: 2.8, real: 2.1 },
-  { month: "MAR", previsto: 2.2, real: 2.0 },
-  { month: "ABR", previsto: 3.1, real: 2.4 },
-  { month: "MAI", previsto: 3.4, real: 2.7 },
-  { month: "JUN", previsto: 3.0, real: 2.5 },
-];
+      const id = typeof item.id === "string" ? item.id : "";
+      const caseId = typeof item.caseId === "string" ? item.caseId : "";
+      const analysisId =
+        typeof item.analysisId === "string" ? item.analysisId : "";
+      const externalCaseNumber =
+        typeof item.externalCaseNumber === "string"
+          ? item.externalCaseNumber
+          : null;
+      const aiRecommendation =
+        typeof item.aiRecommendation === "string"
+          ? item.aiRecommendation
+          : "review";
+      const approvalStatus =
+        typeof item.approvalStatus === "string"
+          ? item.approvalStatus
+          : "rejected";
+      const feedbackText =
+        typeof item.feedbackText === "string" ? item.feedbackText : "";
+      const estimatedCauseValueBrl =
+        typeof item.estimatedCauseValueBrl === "number"
+          ? item.estimatedCauseValueBrl
+          : null;
+      const createdAt =
+        typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString();
 
-const defaultDivergenceData: DivergenceDatum[] = [
-  { name: "Questões Probatórias", value: 45, color: "#0f2044" },
-  { name: "Nova Jurisprudência", value: 30, color: "#5473c7" },
-  { name: "Estratégia de Acordo", value: 15, color: "#90a6d8" },
-  { name: "Outros", value: 10, color: "#ccd7eb" },
-];
+      if (!id || !caseId || !analysisId) {
+        return null;
+      }
 
-const defaultDivergenceCaseCount = 142;
+      return {
+        id,
+        caseId,
+        analysisId,
+        externalCaseNumber,
+        aiRecommendation,
+        approvalStatus,
+        feedbackText,
+        estimatedCauseValueBrl,
+        createdAt,
+      };
+    })
+    .filter((item): item is SavingsItem => item !== null);
 
-const defaultAuditRows: AuditRow[] = [
-  {
-    caseId: "case-2418A",
-    processId: "0801234-56.2024.8.10.0001",
-    escritorio: "Costa & Associados",
-    previsto: 17800,
-    real: 24500,
-    variancia: "+37,6%",
-    status: "DIVERGENTE",
-  },
-  {
-    caseId: "case-8831B",
-    processId: "0654321-09.2024.8.04.0001",
-    escritorio: "Juris Minas",
-    previsto: 9200,
-    real: 9100,
-    variancia: "-1,1%",
-    status: "OK",
-  },
-  {
-    caseId: "case-5502C",
-    processId: "0712456-14.2025.8.13.0024",
-    escritorio: "Núcleo Contencioso BH",
-    previsto: 11200,
-    real: 15600,
-    variancia: "+39,3%",
-    status: "DIVERGENTE",
-  },
-  {
-    caseId: "case-1940D",
-    processId: "0723004-77.2025.8.13.0400",
-    escritorio: "Costa & Associados",
-    previsto: 8400,
-    real: 8600,
-    variancia: "+2,3%",
-    status: "OK",
-  },
-  {
-    caseId: "case-2911E",
-    processId: "0812310-03.2024.8.10.0015",
-    escritorio: "Juris Minas",
-    previsto: 15800,
-    real: 21400,
-    variancia: "+35,4%",
-    status: "DIVERGENTE",
-  },
-];
+  return {
+    totalFeedbacks:
+      typeof feedbackSavings.totalFeedbacks === "number"
+        ? feedbackSavings.totalFeedbacks
+        : items.length,
+    approvedFeedbacks:
+      typeof feedbackSavings.approvedFeedbacks === "number"
+        ? feedbackSavings.approvedFeedbacks
+        : items.filter((item) => item.approvalStatus === "approved").length,
+    rejectedFeedbacks:
+      typeof feedbackSavings.rejectedFeedbacks === "number"
+        ? feedbackSavings.rejectedFeedbacks
+        : items.filter((item) => item.approvalStatus === "rejected").length,
+    totalSavedCostBrl:
+      typeof feedbackSavings.totalSavedCostBrl === "number"
+        ? feedbackSavings.totalSavedCostBrl
+        : items.reduce(
+            (sum, item) => sum + (item.estimatedCauseValueBrl ?? 0),
+            0,
+          ),
+    items,
+  };
+}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -179,38 +177,56 @@ function formatCurrencyCompact(value: number) {
 }
 
 function formatPercent(value: number) {
-  const normalized = value <= 1 ? value * 100 : value;
-  return `${normalized.toFixed(1).replace(".", ",")}%`;
+  return `${value.toFixed(1).replace(".", ",")}%`;
 }
 
-function formatTooltipValue(
-  value: number | string | ReadonlyArray<number | string> | undefined,
-  suffix = "",
-) {
-  const parsedValue =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number(value)
-        : Array.isArray(value)
-          ? Number(value[0] ?? 0)
-          : 0;
-
-  return `${parsedValue}${suffix}`;
+function formatMonthLabel(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "short",
+    year: "2-digit",
+  })
+    .format(new Date(value))
+    .replace(".", "")
+    .toUpperCase();
 }
 
-function deriveDirection(trend: string, fallback: KpiDirection) {
-  const normalized = trend.trim();
-
-  if (normalized.startsWith("-")) {
-    return "down";
+function formatRecommendation(value: string) {
+  if (value === "agreement") {
+    return "Acordo";
   }
 
-  if (normalized.startsWith("+")) {
-    return "up";
+  if (value === "defense") {
+    return "Defesa";
   }
 
-  return fallback;
+  return "Revisão";
+}
+
+function exportFeedbackCsv(rows: SavingsItem[]) {
+  const header =
+    "PROCESSO ID,RECOMENDACAO IA,STATUS,CUSTO SALVO,FEEDBACK,CRIADO EM\n";
+  const body = rows
+    .map((row) =>
+      [
+        row.externalCaseNumber ?? row.caseId,
+        formatRecommendation(row.aiRecommendation),
+        row.approvalStatus === "approved" ? "APROVADO" : "REPROVADO",
+        row.estimatedCauseValueBrl ?? 0,
+        `"${row.feedbackText.replaceAll('"', '""')}"`,
+        row.createdAt,
+      ].join(","),
+    )
+    .join("\n");
+
+  const blob = new Blob([header + body], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "feedbacks-dashboard.csv";
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function useChartWidth() {
@@ -244,353 +260,95 @@ function useChartWidth() {
   return { ref, width };
 }
 
-function exportAuditCsv(rows: AuditRow[]) {
-  const header =
-    "PROCESSO ID,ESCRITÓRIO,PREVISTO (R$),REAL (R$),VARIÂNCIA,STATUS\n";
-  const body = rows
-    .map((row) =>
-      [
-        row.processId,
-        row.escritorio,
-        row.previsto,
-        row.real,
-        row.variancia,
-        row.status,
-      ].join(","),
-    )
-    .join("\n");
+function buildSavingsByMonthData(items: SavingsItem[]): SavingsByMonthDatum[] {
+  const buckets = new Map<string, number>();
 
-  const blob = new Blob([header + body], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "processos-divergentes.csv";
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function getRecordValue(
-  record: Record<string, unknown> | null,
-  keys: string[],
-): Record<string, unknown> | null {
-  if (!record) {
-    return null;
-  }
-
-  for (const key of keys) {
-    const value = record[key];
-
-    if (isRecord(value)) {
-      return value;
+  for (const item of items) {
+    if (item.approvalStatus !== "approved") {
+      continue;
     }
-  }
 
-  return null;
-}
+    const date = new Date(item.createdAt);
 
-function getNumberValue(
-  record: Record<string, unknown> | null,
-  keys: string[],
-): number | null {
-  if (!record) {
-    return null;
-  }
-
-  for (const key of keys) {
-    const value = record[key];
-
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
+    if (Number.isNaN(date.getTime())) {
+      continue;
     }
+
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+    buckets.set(
+      monthKey,
+      (buckets.get(monthKey) ?? 0) + (item.estimatedCauseValueBrl ?? 0),
+    );
   }
 
-  return null;
+  return [...buckets.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([month, total]) => ({
+      month: formatMonthLabel(month),
+      total,
+    }));
 }
 
-function getStringValue(
-  record: Record<string, unknown> | null,
-  keys: string[],
-): string | null {
-  if (!record) {
-    return null;
+function buildDecisionSplitData(
+  approvedFeedbacks: number,
+  rejectedFeedbacks: number,
+): DecisionSplitDatum[] {
+  const total = approvedFeedbacks + rejectedFeedbacks;
+
+  if (total === 0) {
+    return [
+      { name: "Aprovados", value: 0, color: "#0f2044" },
+      { name: "Reprovados", value: 0, color: "#d97706" },
+    ];
   }
 
-  for (const key of keys) {
-    const value = record[key];
-
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-
-  return null;
+  return [
+    {
+      name: "Aprovados",
+      value: Number(((approvedFeedbacks / total) * 100).toFixed(1)),
+      color: "#0f2044",
+    },
+    {
+      name: "Reprovados",
+      value: Number(((rejectedFeedbacks / total) * 100).toFixed(1)),
+      color: "#d97706",
+    },
+  ];
 }
 
-function getArrayValue(
-  record: Record<string, unknown> | null,
-  keys: string[],
-): unknown[] | null {
-  if (!record) {
-    return null;
-  }
+function buildKpis(feedbackSavings: FeedbackSavings): DashboardKpi[] {
+  const totalDecisions =
+    feedbackSavings.approvedFeedbacks + feedbackSavings.rejectedFeedbacks;
+  const adherenceRate =
+    totalDecisions === 0
+      ? 0
+      : (feedbackSavings.approvedFeedbacks / totalDecisions) * 100;
 
-  for (const key of keys) {
-    const value = record[key];
-
-    if (Array.isArray(value)) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-function mapVarianceData(raw: unknown): VarianceDatum[] | null {
-  if (!isRecord(raw)) {
-    return null;
-  }
-
-  const summary = getRecordValue(raw, ["summary"]);
-  const source =
-    getArrayValue(summary, ["costVariance", "varianceData"]) ??
-    getArrayValue(raw, ["costVariance", "varianceData"]);
-
-  if (!source) {
-    return null;
-  }
-
-  const mapped = source
-    .map((item): VarianceDatum | null => {
-      if (!isRecord(item)) {
-        return null;
-      }
-
-      const month =
-        getStringValue(item, ["month", "label", "name"])?.toUpperCase() ?? "";
-      const previsto = getNumberValue(item, ["previsto", "forecast", "planned"]);
-      const real = getNumberValue(item, ["real", "actual", "observed"]);
-
-      if (!month || previsto === null || real === null) {
-        return null;
-      }
-
-      return { month, previsto, real };
-    })
-    .filter((item): item is VarianceDatum => item !== null);
-
-  return mapped.length > 0 ? mapped : null;
-}
-
-function mapDivergenceData(raw: unknown): DivergenceDatum[] | null {
-  if (!isRecord(raw)) {
-    return null;
-  }
-
-  const summary = getRecordValue(raw, ["summary"]);
-  const source =
-    getArrayValue(summary, ["divergenceReasons", "reasons"]) ??
-    getArrayValue(raw, ["divergenceReasons", "reasons"]);
-
-  if (!source) {
-    return null;
-  }
-
-  const fallbackColors = defaultDivergenceData.map((item) => item.color);
-  const mapped = source
-    .map((item, index): DivergenceDatum | null => {
-      if (!isRecord(item)) {
-        return null;
-      }
-
-      const name = getStringValue(item, ["name", "label", "reason"]);
-      const value = getNumberValue(item, ["value", "percentage", "percent"]);
-      const color =
-        getStringValue(item, ["color"]) ??
-        fallbackColors[index % fallbackColors.length];
-
-      if (!name || value === null) {
-        return null;
-      }
-
-      return { name, value, color };
-    })
-    .filter((item): item is DivergenceDatum => item !== null);
-
-  return mapped.length > 0 ? mapped : null;
-}
-
-function mapDivergenceCaseCount(raw: unknown): number | null {
-  if (!isRecord(raw)) {
-    return null;
-  }
-
-  const summary = getRecordValue(raw, ["summary"]);
-
-  return (
-    getNumberValue(summary, ["caseCount", "cases", "totalCases"]) ??
-    getNumberValue(raw, ["caseCount", "cases", "totalCases"])
-  );
-}
-
-function mapAuditRows(raw: unknown): AuditRow[] | null {
-  if (!isRecord(raw)) {
-    return null;
-  }
-
-  const summary = getRecordValue(raw, ["summary"]);
-  const source =
-    getArrayValue(summary, ["divergentCases", "auditRows"]) ??
-    getArrayValue(raw, ["divergentCases", "auditRows"]);
-
-  if (!source) {
-    return null;
-  }
-
-  const mapped = source
-    .map((item): AuditRow | null => {
-      if (!isRecord(item)) {
-        return null;
-      }
-
-      const caseId = getStringValue(item, ["caseId", "id"]) ?? "";
-      const processId =
-        getStringValue(item, ["processId", "processNumber", "externalCaseNumber"]) ??
-        "";
-      const escritorio =
-        getStringValue(item, ["escritorio", "office", "firm"]) ?? "—";
-      const previsto = getNumberValue(item, ["previsto", "forecast", "planned"]);
-      const real = getNumberValue(item, ["real", "actual", "observed"]);
-      const variancia =
-        getStringValue(item, ["variancia", "variance", "varianceLabel"]) ?? "—";
-      const status = getStringValue(item, ["status"]) ?? "OK";
-
-      if (!caseId || !processId || previsto === null || real === null) {
-        return null;
-      }
-
-      return {
-        caseId,
-        processId,
-        escritorio,
-        previsto,
-        real,
-        variancia,
-        status,
-      };
-    })
-    .filter((item): item is AuditRow => item !== null);
-
-  return mapped.length > 0 ? mapped : null;
-}
-
-function mapKpis(raw: unknown): DashboardKpi[] | null {
-  if (!isRecord(raw)) {
-    return null;
-  }
-
-  const summary = getRecordValue(raw, ["summary"]);
-  const adherence = getRecordValue(raw, ["adherence"]);
-  const effectiveness = getRecordValue(raw, ["effectiveness"]);
-
-  const mapped = [...defaultKpis];
-  let changed = false;
-
-  const adherenceValue =
-    getNumberValue(adherence, ["value", "rate", "percentage"]) ??
-    getNumberValue(summary, ["taxaAderencia", "adherenceRate"]);
-  const adherenceTrend =
-    getStringValue(adherence, ["trend"]) ??
-    getStringValue(summary, ["adherenceTrend"]) ??
-    mapped[0].trend;
-
-  if (adherenceValue !== null) {
-    mapped[0] = {
-      ...mapped[0],
-      value: formatPercent(adherenceValue),
-      trend: adherenceTrend,
-      direction: deriveDirection(adherenceTrend, mapped[0].direction),
-    };
-    changed = true;
-  }
-
-  const economyValue =
-    getNumberValue(summary, [
-      "economiaGerada",
-      "savings",
-      "economyGenerated",
-      "savingAmount",
-    ]) ?? getNumberValue(raw, ["economiaGerada"]);
-  const economyTrend =
-    getStringValue(summary, ["economiaTrend", "savingsTrend"]) ?? mapped[1].trend;
-
-  if (economyValue !== null) {
-    mapped[1] = {
-      ...mapped[1],
-      value: formatCurrencyCompact(economyValue),
-      trend: economyTrend,
-      direction: deriveDirection(economyTrend, mapped[1].direction),
-    };
-    changed = true;
-  }
-
-  const closingTimeValue =
-    getNumberValue(summary, [
-      "tempoMedioFechamento",
-      "averageClosingTimeDays",
-      "closingTimeDays",
-    ]) ?? getNumberValue(raw, ["tempoMedioFechamento"]);
-  const closingTimeTrend =
-    getStringValue(summary, ["closingTimeTrend", "tempoTrend"]) ?? mapped[2].trend;
-
-  if (closingTimeValue !== null) {
-    mapped[2] = {
-      ...mapped[2],
-      value: `${Math.round(closingTimeValue)} dias`,
-      trend: closingTimeTrend,
-      direction: deriveDirection(closingTimeTrend, mapped[2].direction),
-    };
-    changed = true;
-  }
-
-  const effectivenessValue =
-    getNumberValue(effectiveness, ["value", "rate", "percentage"]) ??
-    getNumberValue(summary, ["efetividade", "effectivenessRate"]);
-  const effectivenessTrend =
-    getStringValue(effectiveness, ["trend"]) ??
-    getStringValue(summary, ["effectivenessTrend"]) ??
-    mapped[3].trend;
-
-  if (effectivenessValue !== null) {
-    mapped[3] = {
-      ...mapped[3],
-      value: formatPercent(effectivenessValue),
-      trend: effectivenessTrend,
-      direction: deriveDirection(effectivenessTrend, mapped[3].direction),
-    };
-    changed = true;
-  }
-
-  return changed ? mapped : null;
+  return [
+    {
+      label: "Taxa de Aderência",
+      value: formatPercent(adherenceRate),
+      trend: `${feedbackSavings.approvedFeedbacks} aprovados e ${feedbackSavings.rejectedFeedbacks} reprovados`,
+      direction:
+        feedbackSavings.approvedFeedbacks >= feedbackSavings.rejectedFeedbacks
+          ? "up"
+          : "down",
+    },
+    {
+      label: "Economia Gerada",
+      value: formatCurrencyCompact(feedbackSavings.totalSavedCostBrl),
+      trend: `${feedbackSavings.approvedFeedbacks} pareceres aprovados com custo salvo`,
+      direction: feedbackSavings.totalSavedCostBrl > 0 ? "up" : "down",
+    },
+  ];
 }
 
 export function DashboardPage() {
-  // Dashboard page purpose: apresentar métricas consolidadas, gráficos de variação e a auditoria de processos divergentes.
+  // Dashboard page purpose: apresentar métricas reais do backend com base nos feedbacks salvos e nos custos aprovados.
   const navigate = useNavigate();
-  const varianceChart = useChartWidth();
-  const divergenceChart = useChartWidth();
-  const [kpis, setKpis] = useState(defaultKpis);
-  const [varianceData, setVarianceData] = useState(defaultVarianceData);
-  const [divergenceData, setDivergenceData] = useState(defaultDivergenceData);
-  const [divergenceCaseCount, setDivergenceCaseCount] = useState(
-    defaultDivergenceCaseCount,
-  );
-  const [auditRows, setAuditRows] = useState(defaultAuditRows);
+  const savingsChart = useChartWidth();
+  const splitChart = useChartWidth();
+  const [feedbackSavings, setFeedbackSavings] = useState(emptyFeedbackSavings);
 
   useEffect(() => {
     let isActive = true;
@@ -600,31 +358,7 @@ export function DashboardPage() {
         return;
       }
 
-      const nextKpis = mapKpis(response);
-      const nextVariance = mapVarianceData(response);
-      const nextDivergence = mapDivergenceData(response);
-      const nextCaseCount = mapDivergenceCaseCount(response);
-      const nextAuditRows = mapAuditRows(response);
-
-      if (nextKpis) {
-        setKpis(nextKpis);
-      }
-
-      if (nextVariance) {
-        setVarianceData(nextVariance);
-      }
-
-      if (nextDivergence) {
-        setDivergenceData(nextDivergence);
-      }
-
-      if (typeof nextCaseCount === "number") {
-        setDivergenceCaseCount(nextCaseCount);
-      }
-
-      if (nextAuditRows) {
-        setAuditRows(nextAuditRows);
-      }
+      setFeedbackSavings(parseFeedbackSavings(response as DashboardAnalyticsResponse));
     });
 
     return () => {
@@ -632,10 +366,24 @@ export function DashboardPage() {
     };
   }, []);
 
+  const kpis = useMemo(() => buildKpis(feedbackSavings), [feedbackSavings]);
+  const savingsByMonth = useMemo(
+    () => buildSavingsByMonthData(feedbackSavings.items),
+    [feedbackSavings.items],
+  );
+  const decisionSplit = useMemo(
+    () =>
+      buildDecisionSplitData(
+        feedbackSavings.approvedFeedbacks,
+        feedbackSavings.rejectedFeedbacks,
+      ),
+    [feedbackSavings.approvedFeedbacks, feedbackSavings.rejectedFeedbacks],
+  );
+
   return (
     <div className="space-y-6">
       <section className="page-card p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex flex-col gap-5">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-[#1a1a2e]">
               Dashboard
@@ -644,27 +392,10 @@ export function DashboardPage() {
               Acompanhe as métricas gerais dos seus processos.
             </p>
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-2">
-              <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Filter className="h-4 w-4 text-slate-400" />
-                Escritório
-              </span>
-              <Select defaultValue="all" options={officeOptions} />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">
-                Tipo de Ação
-              </span>
-              <Select defaultValue="all" options={actionOptions} />
-            </label>
-          </div>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2">
         {kpis.map((item) => {
           const positive = item.direction === "up";
 
@@ -698,20 +429,20 @@ export function DashboardPage() {
         <div className="page-card p-6">
           <div>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">
-              Análise de Variância de Custo
+              Custos Salvos por Mês
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Custo Judicial Previsto vs. Custo Real de Acordo (R$ Milhões)
+              Soma dos custos salvos a partir dos pareceres aprovados.
             </p>
           </div>
 
-          <div ref={varianceChart.ref} className="mt-6 h-80 min-w-0">
-            {varianceChart.width > 0 ? (
+          <div ref={savingsChart.ref} className="mt-6 h-80 min-w-0">
+            {savingsChart.width > 0 && savingsByMonth.length > 0 ? (
               <BarChart
                 barGap={8}
-                data={varianceData}
+                data={savingsByMonth}
                 height={320}
-                width={varianceChart.width}
+                width={savingsChart.width}
               >
                 <XAxis
                   axisLine={false}
@@ -721,84 +452,78 @@ export function DashboardPage() {
                 />
                 <YAxis
                   axisLine={false}
-                  tickFormatter={(value: number) => `${value}`}
+                  tickFormatter={(value: number) => formatCurrencyCompact(value)}
                   tickLine={false}
                   tick={{ fill: "#6b7280", fontSize: 12 }}
                 />
                 <Tooltip
                   formatter={(value) => [
-                    `R$ ${formatTooltipValue(value, " mi")}`,
-                    "Valor",
+                    formatCurrency(typeof value === "number" ? value : Number(value)),
+                    "Custo salvo",
                   ]}
                   labelStyle={{ color: "#1a1a2e", fontWeight: 600 }}
                 />
-                <Legend />
                 <Bar
-                  dataKey="previsto"
-                  fill="#d7dce7"
-                  name="Custo Previsto"
-                  radius={[6, 6, 0, 0]}
-                />
-                <Bar
-                  dataKey="real"
+                  dataKey="total"
                   fill="#0f2044"
-                  name="Custo Real"
+                  name="Custo salvo"
                   radius={[6, 6, 0, 0]}
                 />
               </BarChart>
-            ) : null}
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-[8px] border border-dashed border-border-soft bg-[#fafbfd] px-6 text-center text-sm text-slate-500">
+                Nenhum custo salvo foi registrado até o momento.
+              </div>
+            )}
           </div>
         </div>
 
         <div className="page-card p-6">
           <div>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">
-              Motivos de Divergência
+              Aprovação dos Pareceres
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Distribuição dos fatores de variação
+              Distribuição entre feedbacks aprovados e reprovados.
             </p>
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_0.95fr] lg:items-center">
-            <div ref={divergenceChart.ref} className="relative h-72 min-w-0">
-              {divergenceChart.width > 0 ? (
-                <PieChart height={288} width={divergenceChart.width}>
+            <div ref={splitChart.ref} className="relative h-72 min-w-0">
+              {splitChart.width > 0 ? (
+                <PieChart height={288} width={splitChart.width}>
                   <Pie
                     cx="50%"
                     cy="50%"
-                    data={divergenceData}
+                    data={decisionSplit}
                     dataKey="value"
                     innerRadius={72}
                     outerRadius={112}
                     paddingAngle={4}
                     stroke="none"
                   >
-                    {divergenceData.map((entry) => (
+                    {decisionSplit.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value) => [
-                      `${formatTooltipValue(value, "%")}`,
-                      "Participação",
-                    ]}
+                    formatter={(value) => [`${value}%`, "Participação"]}
                   />
                 </PieChart>
               ) : null}
 
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-4xl font-bold text-[#1a1a2e]">
-                  {divergenceCaseCount}
+                  {feedbackSavings.totalFeedbacks}
                 </span>
                 <span className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  CASES
+                  FEEDBACKS
                 </span>
               </div>
             </div>
 
             <div className="space-y-3">
-              {divergenceData.map((item) => (
+              {decisionSplit.map((item) => (
                 <div
                   key={item.name}
                   className="flex items-center justify-between rounded-[8px] border border-border-soft bg-[#fbfcfe] px-4 py-3"
@@ -811,7 +536,7 @@ export function DashboardPage() {
                     <span className="text-sm text-slate-700">{item.name}</span>
                   </div>
                   <span className="text-sm font-semibold text-[#1a1a2e]">
-                    {item.value}%
+                    {formatPercent(item.value)}
                   </span>
                 </div>
               ))}
@@ -824,15 +549,17 @@ export function DashboardPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">
-              Processos Divergentes
+              Feedbacks Registrados
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Revisão detalhada de casos que excederam os limites de
-              tolerância.
+              Pareceres aprovados e reprovados já persistidos no backend.
             </p>
           </div>
 
-          <Button onClick={() => exportAuditCsv(auditRows)} variant="secondary">
+          <Button
+            onClick={() => exportFeedbackCsv(feedbackSavings.items)}
+            variant="secondary"
+          >
             <Download className="h-4 w-4" />
             Exportar CSV
           </Button>
@@ -844,36 +571,53 @@ export function DashboardPage() {
               <thead className="bg-[#f8fafc]">
                 <tr className="text-xs uppercase tracking-[0.14em] text-slate-500">
                   <th className="px-4 py-3 font-semibold">PROCESSO ID</th>
-                  <th className="px-4 py-3 font-semibold">ESCRITÓRIO</th>
-                  <th className="px-4 py-3 font-semibold">PREVISTO (R$)</th>
-                  <th className="px-4 py-3 font-semibold">REAL (R$)</th>
-                  <th className="px-4 py-3 font-semibold">VARIÂNCIA</th>
+                  <th className="px-4 py-3 font-semibold">RECOMENDAÇÃO IA</th>
                   <th className="px-4 py-3 font-semibold">STATUS</th>
+                  <th className="px-4 py-3 font-semibold">CUSTO SALVO</th>
+                  <th className="px-4 py-3 font-semibold">FEEDBACK</th>
                   <th className="px-4 py-3 font-semibold">AÇÃO</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-soft bg-white">
-                {auditRows.map((row) => (
-                  <tr key={row.caseId}>
+                {feedbackSavings.items.length === 0 ? (
+                  <tr>
+                    <td
+                      className="px-4 py-10 text-center text-sm text-slate-500"
+                      colSpan={6}
+                    >
+                      Nenhum feedback foi salvo no backend ainda.
+                    </td>
+                  </tr>
+                ) : null}
+
+                {feedbackSavings.items.map((row) => (
+                  <tr key={row.id}>
                     <td className="px-4 py-4 text-sm font-medium text-[#1a1a2e]">
-                      {row.processId}
+                      {row.externalCaseNumber ?? row.caseId}
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-600">
-                      {row.escritorio}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-slate-600">
-                      {formatCurrency(row.previsto)}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-slate-600">
-                      {formatCurrency(row.real)}
-                    </td>
-                    <td className="px-4 py-4 text-sm font-medium text-slate-700">
-                      {row.variancia}
+                      {formatRecommendation(row.aiRecommendation)}
                     </td>
                     <td className="px-4 py-4">
-                      <Badge tone={row.status === "OK" ? "success" : "warning"}>
-                        {row.status}
+                      <Badge
+                        tone={
+                          row.approvalStatus === "approved"
+                            ? "success"
+                            : "warning"
+                        }
+                      >
+                        {row.approvalStatus === "approved"
+                          ? "APROVADO"
+                          : "REPROVADO"}
                       </Badge>
+                    </td>
+                    <td className="px-4 py-4 text-sm text-slate-600">
+                      {row.estimatedCauseValueBrl
+                        ? formatCurrency(row.estimatedCauseValueBrl)
+                        : "—"}
+                    </td>
+                    <td className="max-w-xl px-4 py-4 text-sm text-slate-600">
+                      <span className="line-clamp-2">{row.feedbackText}</span>
                     </td>
                     <td className="px-4 py-4">
                       <Button

@@ -225,6 +225,12 @@ export type CaseRecord = {
   updatedAt: string;
   documents: CaseDocument[];
   latestAnalysis?: StoredCaseAnalysis;
+  latestFeedback?: {
+    id: string;
+    approvalStatus: "approved" | "rejected";
+    feedbackText?: string | null;
+    createdAt: string;
+  };
 };
 
 export type StoredCaseAnalysis = {

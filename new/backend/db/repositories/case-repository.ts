@@ -210,6 +210,12 @@ function mapCaseRecord(caseRecord: {
     generatedAt: Date;
     createdAt: Date;
   }>;
+  feedbacks?: Array<{
+    id: string;
+    approvalStatus: string;
+    feedbackText: string;
+    createdAt: Date;
+  }>;
 }): CaseRecord {
   return caseRecordSchema.parse({
     id: caseRecord.id,
@@ -229,6 +235,17 @@ function mapCaseRecord(caseRecord: {
     documents: caseRecord.documents.map(mapCaseDocument),
     latestAnalysis: caseRecord.analyses?.[0]
       ? mapStoredCaseAnalysis(caseRecord.analyses[0])
+      : undefined,
+    latestFeedback: caseRecord.feedbacks?.[0]
+      ? {
+          id: caseRecord.feedbacks[0].id,
+          approvalStatus:
+            caseRecord.feedbacks[0].approvalStatus === "approved"
+              ? "approved"
+              : "rejected",
+          feedbackText: caseRecord.feedbacks[0].feedbackText,
+          createdAt: caseRecord.feedbacks[0].createdAt.toISOString()
+        }
       : undefined
   });
 }
@@ -238,6 +255,12 @@ export async function createCase(input: CreateCaseInput): Promise<CaseRecord> {
     include: {
       documents: true,
       analyses: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1
+      },
+      feedbacks: {
         orderBy: {
           createdAt: "desc"
         },
@@ -291,6 +314,12 @@ export async function listCases(): Promise<CaseRecord[]> {
           createdAt: "desc"
         },
         take: 1
+      },
+      feedbacks: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1
       }
     },
     orderBy: {
@@ -313,11 +342,91 @@ export async function getCaseById(caseId: string): Promise<CaseRecord | null> {
           createdAt: "desc"
         },
         take: 1
+      },
+      feedbacks: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1
       }
     }
   });
 
   return caseRecord ? mapCaseRecord(caseRecord) : null;
+}
+
+function normalizeCaseNumber(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+export async function getCaseByExternalCaseNumber(
+  externalCaseNumber: string
+): Promise<CaseRecord | null> {
+  const exactMatch = await prisma.case.findFirst({
+    where: {
+      externalCaseNumber
+    },
+    include: {
+      documents: true,
+      analyses: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1
+      },
+      feedbacks: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  });
+
+  if (exactMatch) {
+    return mapCaseRecord(exactMatch);
+  }
+
+  const normalizedQuery = normalizeCaseNumber(externalCaseNumber);
+
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const possibleMatches = await prisma.case.findMany({
+    where: {
+      externalCaseNumber: {
+        not: null
+      }
+    },
+    include: {
+      documents: true,
+      analyses: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1
+      },
+      feedbacks: {
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 1
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  });
+
+  const normalizedMatch = possibleMatches.find((caseRecord) =>
+    normalizeCaseNumber(caseRecord.externalCaseNumber ?? "") === normalizedQuery
+  );
+
+  return normalizedMatch ? mapCaseRecord(normalizedMatch) : null;
 }
 
 export async function getCaseDocuments(caseId: string): Promise<CaseDocument[]> {
@@ -476,10 +585,40 @@ export async function createCaseFeedback(
   }
 
   const aiRecommendation = analysis.recommendedAction ?? "review";
-  const estimatedCauseValueBrl =
-    input.approvalStatus === "approved" && typeof caseRecord.claimAmountCents === "number"
+  const claimAmountBrl =
+    typeof caseRecord.claimAmountCents === "number"
       ? caseRecord.claimAmountCents / 100
       : null;
+  const decision = parseJson<CaseDecision>(analysis.decisionJson, {
+    action: "review",
+    confidence: 0,
+    usedRules: [],
+    expectedJudicialCost: 0,
+    expectedCondemnation: 0,
+    lossProbability: 0,
+    explanationShort: "",
+    evidenceRefs: []
+  });
+
+  let estimatedCauseValueBrl: number | null = null;
+
+  if (input.approvalStatus === "approved" && claimAmountBrl !== null) {
+    if (aiRecommendation === "agreement") {
+      const agreementValue =
+        typeof decision.offerMax === "number"
+          ? decision.offerMax
+          : typeof decision.offerTarget === "number"
+            ? decision.offerTarget
+            : 0;
+
+      estimatedCauseValueBrl = Math.max(0, claimAmountBrl - agreementValue);
+    } else if (aiRecommendation === "defense") {
+      estimatedCauseValueBrl = Math.max(
+        0,
+        claimAmountBrl - (decision.expectedCondemnation ?? 0)
+      );
+    }
+  }
 
   const feedback = await prisma.caseFeedback.create({
     data: {
@@ -489,6 +628,15 @@ export async function createCaseFeedback(
       approvalStatus: input.approvalStatus,
       aiRecommendation,
       estimatedCauseValueBrl
+    }
+  });
+
+  await prisma.case.update({
+    where: {
+      id: caseId
+    },
+    data: {
+      status: "actioned"
     }
   });
 

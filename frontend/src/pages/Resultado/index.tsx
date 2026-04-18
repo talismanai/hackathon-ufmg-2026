@@ -1,7 +1,6 @@
 import {
   CheckCircle2,
   ChevronRight,
-  Cpu,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -67,6 +66,27 @@ function buildVerdictTitle(result: CaseResult) {
   return "Recomendação: Defesa";
 }
 
+function getResultBadge(result: CaseResult) {
+  if (result.resultStatus === "approved") {
+    return {
+      label: "PARECER APROVADO",
+      tone: "success" as const,
+    };
+  }
+
+  if (result.resultStatus === "rejected") {
+    return {
+      label: "PARECER REPROVADO",
+      tone: "warning" as const,
+    };
+  }
+
+  return {
+    label: "AGUARDANDO PARECER",
+    tone: "warning" as const,
+  };
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     if (error.message === "404" || error.message === "Caso não encontrado") {
@@ -109,7 +129,6 @@ export function ResultadoPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
 
-  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<CaseResult | null>(null);
   const [topicDecisions, setTopicDecisions] = useState<TopicDecisions>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -131,18 +150,6 @@ export function ResultadoPage() {
     setFeedbackMessage("");
     setResult(null);
     setTopicDecisions({});
-    setProgress(8);
-
-    const timerId = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= 94) {
-          return current;
-        }
-
-        const next = current + Math.max(4, Math.round((100 - current) * 0.12));
-        return Math.min(next, 94);
-      });
-    }, 2000);
 
     void getCaseResult(caseId)
       .then((response) => {
@@ -151,7 +158,6 @@ export function ResultadoPage() {
         }
 
         setResult(response);
-        setProgress(100);
         setIsLoading(false);
       })
       .catch((error) => {
@@ -163,7 +169,6 @@ export function ResultadoPage() {
 
     return () => {
       isActive = false;
-      window.clearInterval(timerId);
     };
   }, [caseId]);
 
@@ -178,8 +183,14 @@ export function ResultadoPage() {
     });
   }, [result, topicDecisions]);
 
+  const resultBadge = useMemo(
+    () => (result ? getResultBadge(result) : null),
+    [result],
+  );
+  const isReadOnly = result?.resultStatus !== "pending";
+
   async function handleConfirmFeedback() {
-    if (!result || !allTopicsDecided) {
+    if (!result || !allTopicsDecided || isReadOnly) {
       return;
     }
 
@@ -200,6 +211,14 @@ export function ResultadoPage() {
         feedbackText: buildFeedbackText(result, topicDecisions),
       });
 
+      setResult((current) =>
+        current
+          ? {
+              ...current,
+              resultStatus: approvalStatus,
+            }
+          : current,
+      );
       setFeedbackMessage("Parecer salvo com sucesso.");
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -209,41 +228,12 @@ export function ResultadoPage() {
   }
 
   if (isLoading) {
-    const estimatedSeconds = Math.max(
-      2,
-      Math.ceil(((100 - Math.min(progress, 94)) / 100) * 60),
-    );
-
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
-        <div className="page-card w-full max-w-3xl p-8 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-mist text-brand-navy">
-            <Cpu className="h-10 w-10" />
-          </div>
-          <h1 className="mt-6 text-3xl font-bold text-[#1a1a2e]">
-            Processando Documento pelo Agente IA
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            A inteligência artificial está analisando os documentos e extraindo
-            os principais argumentos.
-          </p>
-
-          <div className="mt-8">
-            <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-brand-navy transition-all duration-100"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="mt-3 flex items-center justify-between text-sm text-slate-500">
-              <span>{progress}% Concluído</span>
-              <span>Est. {estimatedSeconds}s</span>
-            </div>
-          </div>
-
-          <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-border-soft bg-white px-4 py-2 text-sm text-slate-600">
+        <div className="page-card w-full max-w-xl p-8 text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-white px-4 py-2 text-sm text-slate-600">
             <Spinner className="text-brand-navy" />
-            Validando tópicos operacionais e precedentes internos
+            Carregando análise do processo...
           </div>
         </div>
       </div>
@@ -254,9 +244,6 @@ export function ResultadoPage() {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="page-card w-full max-w-2xl p-8 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-red-600">
-            <Cpu className="h-10 w-10" />
-          </div>
           <h1 className="mt-6 text-3xl font-bold text-[#1a1a2e]">
             Não foi possível carregar a análise
           </h1>
@@ -290,9 +277,11 @@ export function ResultadoPage() {
               </p>
             </div>
 
-            <Badge tone="warning" className="h-fit self-start">
-              AGUARDANDO PARECER
-            </Badge>
+            {resultBadge ? (
+              <Badge tone={resultBadge.tone} className="h-fit self-start">
+                {resultBadge.label}
+              </Badge>
+            ) : null}
           </div>
         </div>
 
@@ -336,7 +325,9 @@ export function ResultadoPage() {
                         state.decision === "approved"
                           ? "border-brand-navy bg-brand-navy text-white"
                           : "border-brand-navy/30 bg-white text-brand-navy hover:bg-mist",
+                        isReadOnly ? "cursor-not-allowed opacity-60" : "",
                       ].join(" ")}
+                      disabled={isReadOnly}
                       onClick={() =>
                         setTopicDecisions((current) => ({
                           ...current,
@@ -357,7 +348,9 @@ export function ResultadoPage() {
                         state.decision === "disagreed"
                           ? "border-red-600 bg-red-600 text-white"
                           : "border-border-soft bg-white text-slate-700 hover:border-red-200 hover:bg-red-50 hover:text-red-600",
+                        isReadOnly ? "cursor-not-allowed opacity-60" : "",
                       ].join(" ")}
+                      disabled={isReadOnly}
                       onClick={() =>
                         setTopicDecisions((current) => ({
                           ...current,
@@ -381,6 +374,7 @@ export function ResultadoPage() {
                         </span>
                         <textarea
                           className="min-h-32 w-full rounded-[8px] border border-red-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-200 focus:ring-2 focus:ring-red-100"
+                          disabled={isReadOnly}
                           onChange={(event) =>
                             setTopicDecisions((current) => ({
                               ...current,
@@ -401,17 +395,23 @@ export function ResultadoPage() {
             })}
           </div>
 
-          <Button
-            className="mt-6"
-            disabled={!allTopicsDecided}
-            isLoading={isSubmittingFeedback}
-            onClick={handleConfirmFeedback}
-            size="lg"
-            variant="primary"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Confirmar Parecer
-          </Button>
+          {isReadOnly ? (
+            <p className="mt-6 rounded-[8px] border border-border-soft bg-[#f8fafc] px-4 py-3 text-sm text-slate-600">
+              Este parecer já foi registrado anteriormente e está bloqueado para edição.
+            </p>
+          ) : (
+            <Button
+              className="mt-6"
+              disabled={!allTopicsDecided}
+              isLoading={isSubmittingFeedback}
+              onClick={handleConfirmFeedback}
+              size="lg"
+              variant="primary"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Confirmar Parecer
+            </Button>
+          )}
 
           {feedbackMessage ? (
             <p className="mt-3 text-sm text-emerald-700">{feedbackMessage}</p>
@@ -480,19 +480,6 @@ export function ResultadoPage() {
               <Badge tone={complexityTone(result.complexidade)}>
                 {result.complexidade}
               </Badge>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-sm text-slate-500">
-                Advogado Responsável
-              </span>
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-navy text-sm font-semibold text-white">
-                  {result.advogado.initials}
-                </div>
-                <span className="text-sm font-medium text-[#1a1a2e]">
-                  {result.advogado.name}
-                </span>
-              </div>
             </div>
           </div>
         </div>

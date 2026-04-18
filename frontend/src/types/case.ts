@@ -11,11 +11,7 @@ export type CaseCategory = "Cível" | "Trabalhista" | "Criminal" | "Tributário"
 export type CaseComplexity = "Baixa" | "Média" | "Alta";
 
 export type VerdictRecommendation = "Acordo" | "Defesa" | "Revisão";
-
-export interface CaseLawyer {
-  name: string;
-  initials: string;
-}
+export type ResultStatus = "pending" | "approved" | "rejected";
 
 export interface AiTopic {
   id: string;
@@ -46,12 +42,12 @@ export interface CaseVerdict {
 export interface CaseResult {
   caseId: string;
   analysisId?: string;
+  resultStatus: ResultStatus;
   processNumber: string;
   clientName: string;
   vara: string;
   dataFato: string;
   complexidade: CaseComplexity;
-  advogado: CaseLawyer;
   verdict: CaseVerdict;
   topics: AiTopic[];
   generatedAt: string;

@@ -66,10 +66,31 @@ interface BackendAnalysis {
 interface BackendCaseResultResponse {
   caseId: string;
   analysisId?: string;
+  caseStatus?: string;
+  latestFeedbackApprovalStatus?: string | null;
   caseRecord?: BackendCaseRecord;
   analysis?: BackendAnalysis;
   decision?: BackendDecision;
   lawyerExplanation?: string;
+}
+
+interface BackendSearchCaseResponse {
+  caseId: string;
+  processNumber: string;
+  clientName: string;
+  vara: string;
+  dataFato: string;
+  verdictRecommendation?: string;
+  status?: string;
+}
+
+function isReadyCaseStatus(status?: string) {
+  return (
+    status === "analyzed" ||
+    status === "actioned" ||
+    status === "completed" ||
+    status === "reviewed"
+  );
 }
 
 export interface SubmitCaseFeedbackPayload {
@@ -211,6 +232,25 @@ function getDetailedExplanation(response: BackendCaseResultResponse) {
   return paragraphs[1];
 }
 
+function mapResultStatus(
+  caseStatus?: string,
+  latestFeedbackApprovalStatus?: string | null,
+): CaseResult["resultStatus"] {
+  if (latestFeedbackApprovalStatus === "approved") {
+    return "approved";
+  }
+
+  if (latestFeedbackApprovalStatus === "rejected") {
+    return "rejected";
+  }
+
+  if (caseStatus === "actioned") {
+    return "approved";
+  }
+
+  return "pending";
+}
+
 function sanitizeTopicTitle(value: string, index: number) {
   const cleaned = value
     .replace(/^\d+[.)-]?\s*/, "")
@@ -301,12 +341,15 @@ function mapBackendResultToCaseResult(
   return {
     caseId: response.caseId,
     analysisId: response.analysisId,
+    resultStatus: mapResultStatus(
+      response.caseStatus,
+      response.latestFeedbackApprovalStatus,
+    ),
     processNumber: response.caseRecord?.externalCaseNumber ?? caseId,
     clientName: response.caseRecord?.plaintiffName ?? "—",
     vara: response.caseRecord?.courtDistrict ?? response.caseRecord?.uf ?? "—",
     dataFato: response.caseRecord?.createdAt ?? new Date().toISOString(),
     complexidade: mapRiskBandToComplexity(response.analysis?.risk?.riskBand),
-    advogado: { name: "Advogado Responsável", initials: "AR" },
     verdict: {
       recommendation,
       probability,
@@ -397,7 +440,11 @@ export async function getCaseResult(caseId: string): Promise<CaseResult> {
     try {
       const statusResponse = await getCaseStatus(caseId);
 
-      if (statusResponse.status === "analyzed") {
+      if (statusResponse.status === "not_found") {
+        throw new Error("Caso não encontrado");
+      }
+
+      if (isReadyCaseStatus(statusResponse.status)) {
         try {
           const resultResponse = await requestJson<BackendCaseResultResponse>(
             "/api/case-analyzer/result",
@@ -437,20 +484,22 @@ export async function searchCase(
   processNumber: string,
 ): Promise<CaseMetadata | null> {
   try {
-    const response = await getCaseStatus(processNumber);
-
-    if (!response.caseId || !response.status) {
-      return null;
-    }
+    const response = await requestJson<BackendSearchCaseResponse>(
+      "/api/case-analyzer/search",
+      undefined,
+      { processNumber },
+    );
 
     return {
       caseId: response.caseId,
-      processNumber,
-      clientName: "—",
-      vara: "—",
-      dataFato: "—",
-      verdictRecommendation: "Defesa",
-      status: response.status === "analyzed" ? "completed" : "processing",
+      processNumber: response.processNumber,
+      clientName: response.clientName || "—",
+      vara: response.vara || "—",
+      dataFato: response.dataFato || "—",
+      verdictRecommendation: normalizeRecommendation(
+        response.verdictRecommendation,
+      ),
+      status: isReadyCaseStatus(response.status) ? "completed" : "processing",
     };
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {

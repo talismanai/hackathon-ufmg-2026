@@ -155,7 +155,7 @@ export function ConsultarProcessoPage() {
                 className="mt-6"
                 onClick={() => navigate(`/resultado/${result.caseId}`)}
               >
-                Ver Análise Completa
+                Ver Processo
               </Button>
             </div>
           ) : null}

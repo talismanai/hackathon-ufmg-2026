@@ -41,6 +41,10 @@ const resultQuerySchema = z.object({
   caseId: z.string().min(1)
 });
 
+const searchQuerySchema = z.object({
+  processNumber: z.string().min(1)
+});
+
 export class CaseAnalyzerApi {
   constructor(private readonly caseAnalyzerUseCase: CaseAnalyzerUseCase) {}
 
@@ -87,6 +91,9 @@ export class CaseAnalyzerApi {
           traceViewerUrl: `/api/traces/case_decision/${result.caseRecord.id}/view`,
           traceJsonUrl: `/api/traces/case_decision/${result.caseRecord.id}`,
           caseRecord: result.caseRecord,
+          caseStatus: result.caseRecord.status,
+          latestFeedbackApprovalStatus:
+            result.caseRecord.latestFeedback?.approvalStatus ?? null,
           analysis: result.analysis,
           decision: result.analysis.decision,
           lawyerExplanation: result.analysis.explanationText ?? null,
@@ -101,6 +108,34 @@ export class CaseAnalyzerApi {
           message
         });
       }
+    });
+
+    app.get("/search", async (request, reply) => {
+      const query = searchQuerySchema.parse(request.query);
+      const caseRecord = await this.caseAnalyzerUseCase.findCaseByProcessNumber({
+        processNumber: query.processNumber
+      });
+
+      if (!caseRecord) {
+        return reply.code(404).send({
+          message: "Caso nao encontrado."
+        });
+      }
+
+      return reply.send({
+        caseId: caseRecord.id,
+        processNumber: caseRecord.externalCaseNumber ?? query.processNumber,
+        clientName: caseRecord.plaintiffName ?? "—",
+        vara: caseRecord.courtDistrict ?? caseRecord.uf ?? "—",
+        dataFato: caseRecord.createdAt,
+        verdictRecommendation:
+          caseRecord.latestAnalysis?.decision.action === "agreement"
+            ? "Acordo"
+            : caseRecord.latestAnalysis?.decision.action === "review"
+              ? "Revisão"
+              : "Defesa",
+        status: caseRecord.status
+      });
     });
   }
 }

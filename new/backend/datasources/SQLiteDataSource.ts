@@ -3,6 +3,7 @@ import {
   createCase,
   createCaseFeedback,
   createLawyerAction,
+  getCaseByExternalCaseNumber,
   getCaseById,
   getCaseDocuments
 } from "../db/repositories/case-repository.js";
@@ -53,6 +54,10 @@ export class SQLiteDataSource implements SQLiteRepository {
 
   async getCaseById(caseId: string) {
     return getCaseById(caseId);
+  }
+
+  async getCaseByExternalCaseNumber(externalCaseNumber: string) {
+    return getCaseByExternalCaseNumber(externalCaseNumber);
   }
 
   async getCaseDocuments(caseId: string) {

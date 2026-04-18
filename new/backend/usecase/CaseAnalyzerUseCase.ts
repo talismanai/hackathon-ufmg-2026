@@ -92,4 +92,8 @@ export class CaseAnalyzerUseCase {
       analysis: caseRecord.latestAnalysis
     };
   }
+
+  async findCaseByProcessNumber(input: { processNumber: string }) {
+    return this.sqliteRepository.getCaseByExternalCaseNumber(input.processNumber);
+  }
 }

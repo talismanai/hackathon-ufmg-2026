@@ -175,6 +175,17 @@ test("new backend sobe independente e executa workflow1 + workflow2", async (con
   assert.equal(resultResponse.json().analysisId, caseBody.analysisId);
   assert.equal(resultResponse.json().decision.action, "agreement");
 
+  const searchResponse = await app.inject({
+    method: "GET",
+    url: "/api/case-analyzer/search?processNumber=NEW-CASE-001"
+  });
+
+  assert.equal(searchResponse.statusCode, 200);
+  assert.equal(searchResponse.json().caseId, caseBody.caseId);
+  assert.equal(searchResponse.json().processNumber, "NEW-CASE-001");
+  assert.equal(searchResponse.json().clientName, "Maria da Silva");
+  assert.equal(searchResponse.json().verdictRecommendation, "Acordo");
+
   const feedbackResponse = await app.inject({
     method: "POST",
     url: `/api/case-feedback/${caseBody.caseId}`,
@@ -185,10 +196,26 @@ test("new backend sobe independente e executa workflow1 + workflow2", async (con
     }
   });
 
+  const expectedSavedCost =
+    caseBody.decision.action === "agreement"
+      ? Math.max(
+          0,
+          15000 -
+            Number(
+              caseBody.decision.offerMax ?? caseBody.decision.offerTarget ?? 0
+            )
+        )
+      : caseBody.decision.action === "defense"
+        ? Math.max(
+            0,
+            15000 - Number(caseBody.decision.expectedCondemnation ?? 0)
+          )
+        : 0;
+
   assert.equal(feedbackResponse.statusCode, 201);
   assert.equal(feedbackResponse.json().approvalStatus, "approved");
   assert.equal(feedbackResponse.json().aiRecommendation, "agreement");
-  assert.equal(feedbackResponse.json().estimatedCauseValueBrl, 15000);
+  assert.equal(feedbackResponse.json().estimatedCauseValueBrl, expectedSavedCost);
 
   const feedbackSavingsResponse = await app.inject({
     method: "GET",
@@ -197,8 +224,20 @@ test("new backend sobe independente e executa workflow1 + workflow2", async (con
 
   assert.equal(feedbackSavingsResponse.statusCode, 200);
   assert.equal(feedbackSavingsResponse.json().approvedFeedbacks, 1);
-  assert.equal(feedbackSavingsResponse.json().totalSavedCostBrl, 15000);
+  assert.equal(feedbackSavingsResponse.json().totalSavedCostBrl, expectedSavedCost);
   assert.equal(feedbackSavingsResponse.json().items.length, 1);
+
+  const refreshedResultResponse = await app.inject({
+    method: "GET",
+    url: `/api/case-analyzer/result?caseId=${caseBody.caseId}`
+  });
+
+  assert.equal(refreshedResultResponse.statusCode, 200);
+  assert.equal(refreshedResultResponse.json().caseStatus, "actioned");
+  assert.equal(
+    refreshedResultResponse.json().latestFeedbackApprovalStatus,
+    "approved"
+  );
 
   const analyticsResponse = await app.inject({
     method: "GET",
@@ -216,5 +255,5 @@ test("new backend sobe independente e executa workflow1 + workflow2", async (con
   });
 
   assert.equal(statusResponse.statusCode, 200);
-  assert.equal(statusResponse.json().status, "analyzed");
+  assert.equal(statusResponse.json().status, "actioned");
 });

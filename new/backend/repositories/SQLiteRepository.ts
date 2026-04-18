@@ -67,6 +67,9 @@ export interface SQLiteRepository {
   listPolicies(): Promise<StoredPolicy[]>;
   createCase(input: CreateCaseInput): Promise<CaseRecord>;
   getCaseById(caseId: string): Promise<CaseRecord | null>;
+  getCaseByExternalCaseNumber(
+    externalCaseNumber: string
+  ): Promise<CaseRecord | null>;
   getCaseDocuments(caseId: string): Promise<CaseDocument[]>;
   addCaseDocuments(
     caseId: string,

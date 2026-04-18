@@ -297,7 +297,15 @@ export const caseRecordSchema = z.object({
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   documents: z.array(caseDocumentSchema),
-  latestAnalysis: storedCaseAnalysisSchema.optional()
+  latestAnalysis: storedCaseAnalysisSchema.optional(),
+  latestFeedback: z
+    .object({
+      id: z.string().min(1),
+      approvalStatus: z.enum(["approved", "rejected"]),
+      feedbackText: z.string().nullable().optional(),
+      createdAt: z.string().min(1)
+    })
+    .optional()
 });
 
 export const lawyerActionInputSchema = z.object({
